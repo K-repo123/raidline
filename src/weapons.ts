@@ -277,7 +277,7 @@ export function viewKick(def: WeaponDef, shotIndex: number): { pitch: number; ya
     };
   }
   return {
-    pitch: def.recoilY * 2.4 + Math.min(shotIndex, 8) * def.recoilY * 0.55,
+    pitch: def.recoilY * 6.2 + Math.min(shotIndex, 8) * def.recoilY * 0.7,
     yaw: Math.sin(shotIndex * 1.5) * def.recoilX * 2.2,
   };
 }

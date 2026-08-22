@@ -173,13 +173,16 @@ h1 {
 }
 
 #spawn-prot {
-  margin-top: 4px;
-  padding: 2px 8px;
+  position: fixed;
+  top: 68px;
+  left: 16px;
+  padding: 3px 8px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.16em;
   color: #111;
   background: #ffe45a;
+  z-index: 6;
 }
 
 #killfeed {
@@ -509,6 +512,15 @@ h1 {
 
 #buy button:hover {
   border-color: var(--line);
+}
+
+#buy button.cant {
+  opacity: 0.38;
+  color: #7c847c;
+}
+
+#buy button.cant b {
+  color: #7c847c;
 }
 
 #buy button b {

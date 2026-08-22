@@ -254,26 +254,7 @@ export function buildAshpier(): MapData {
     makeLetter("B", 24, 16, COLORS.siteB),
   ];
 
-  const waypoints: Waypoint[] = [
-    { id: "raid", x: 0, z: -38, links: ["raidL", "raidR", "aAlley", "bAlley"], area: "spawn" },
-    { id: "raidL", x: -9, z: -32, links: ["raid", "yard", "aAlley"], area: "spawn" },
-    { id: "raidR", x: 9, z: -32, links: ["raid", "yard", "bAlley"], area: "spawn" },
-    { id: "yard", x: 0, z: -22, links: ["raidL", "raidR", "midIn", "aAlley", "bAlley"], area: "yard" },
-    { id: "midIn", x: 0, z: -6, links: ["yard", "mid"], area: "mid" },
-    { id: "mid", x: 0, z: 6, links: ["midIn", "midL", "midR"], area: "mid" },
-    { id: "midL", x: -9, z: 14, links: ["mid", "midOut", "aDoor"], area: "mid" },
-    { id: "midR", x: 9, z: 14, links: ["mid", "midOut", "bDoor"], area: "mid" },
-    { id: "midOut", x: 0, z: 20, links: ["midL", "midR", "aDoor", "bDoor", "lineL", "lineR"], area: "mid" },
-    { id: "aAlley", x: -22, z: -12, links: ["raid", "raidL", "yard", "aSite"], area: "a" },
-    { id: "aSite", x: -23, z: 18, links: ["aAlley", "aDoor"], area: "a" },
-    { id: "aDoor", x: -12, z: 18, links: ["aSite", "midOut", "midL"], area: "a" },
-    { id: "bAlley", x: 20, z: -12, links: ["raid", "raidR", "yard", "bSite"], area: "b" },
-    { id: "bSite", x: 24, z: 16, links: ["bAlley", "bDoor"], area: "b" },
-    { id: "bDoor", x: 14, z: 20, links: ["bSite", "midOut", "midR"], area: "b" },
-    { id: "lineL", x: -9, z: 32, links: ["line", "midOut", "aDoor"], area: "spawn" },
-    { id: "lineR", x: 9, z: 32, links: ["line", "midOut", "bDoor"], area: "spawn" },
-    { id: "line", x: 0, z: 40, links: ["lineL", "lineR", "aDoor", "bDoor"], area: "spawn" },
-  ];
+  const waypoints = ashpierWaypoints();
 
   return {
     solids,
@@ -287,6 +268,32 @@ export function buildAshpier(): MapData {
     waypoints,
     labels,
   };
+}
+
+/** Side lanes only — no hop through the RAID/LINE lips, mid plug, or yard gate. */
+export function ashpierWaypoints(): Waypoint[] {
+  return [
+    { id: "raid", x: 0, z: -38, links: ["raidL", "raidR"], area: "spawn" },
+    { id: "raidL", x: -9, z: -32, links: ["raid", "yard", "cutL", "aAlley"], area: "spawn" },
+    { id: "raidR", x: 9, z: -32, links: ["raid", "yard", "cutR", "bAlley"], area: "spawn" },
+    { id: "yard", x: 0, z: -22, links: ["raidL", "raidR", "cutL", "cutR", "aAlley", "bAlley"], area: "yard" },
+    { id: "cutL", x: -9, z: -16, links: ["yard", "raidL", "aAlley", "midL"], area: "yard" },
+    { id: "cutR", x: 9, z: -16, links: ["yard", "raidR", "bAlley", "midR"], area: "yard" },
+    { id: "midIn", x: 0, z: -6, links: ["mid", "midL", "midR"], area: "mid" },
+    { id: "mid", x: 0, z: 6, links: ["midIn", "midL", "midR"], area: "mid" },
+    { id: "midL", x: -9, z: 14, links: ["mid", "midIn", "midOut", "cutL", "aDoor"], area: "mid" },
+    { id: "midR", x: 9, z: 14, links: ["mid", "midIn", "midOut", "cutR", "bDoor"], area: "mid" },
+    { id: "midOut", x: 0, z: 20, links: ["midL", "midR", "aDoor", "bDoor", "lineL", "lineR"], area: "mid" },
+    { id: "aAlley", x: -22, z: -12, links: ["raidL", "yard", "cutL", "aSite"], area: "a" },
+    { id: "aSite", x: -23, z: 18, links: ["aAlley", "aDoor"], area: "a" },
+    { id: "aDoor", x: -12, z: 18, links: ["aSite", "midOut", "midL"], area: "a" },
+    { id: "bAlley", x: 20, z: -12, links: ["raidR", "yard", "cutR", "bSite"], area: "b" },
+    { id: "bSite", x: 24, z: 16, links: ["bAlley", "bDoor"], area: "b" },
+    { id: "bDoor", x: 14, z: 20, links: ["bSite", "midOut", "midR"], area: "b" },
+    { id: "lineL", x: -9, z: 32, links: ["line", "midOut", "aDoor"], area: "spawn" },
+    { id: "lineR", x: 9, z: 32, links: ["line", "midOut", "bDoor"], area: "spawn" },
+    { id: "line", x: 0, z: 40, links: ["lineL", "lineR"], area: "spawn" },
+  ];
 }
 
 export function siteAt(sites: Site[], x: number, z: number): Site | null {
