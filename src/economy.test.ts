@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { MATCH } from "./config";
+import { BOT, MATCH, MOVE } from "./config";
 import { GEAR, PLAYER_HURT_PER_SECOND, PLAYER_HURT_PER_TICK, WEAPONS, botChipDamage, hitDamage, makeWeapon, soakArmor, sprayOffset, takePlayerHurt, viewKick } from "./weapons";
 
 describe("economy and weapons", () => {
@@ -10,7 +10,15 @@ describe("economy and weapons", () => {
 
   it("spawn protection and bot fire delay are set", () => {
     assert.equal(MATCH.spawnProt, 3);
-    assert.equal(MATCH.botFireDelay, 1.5);
+    assert.equal(MATCH.botFireDelay, 2.2);
+  });
+
+  it("bots share the player run cap and do not blitz", () => {
+    assert.equal(BOT.moveScale, 1);
+    assert.ok(MOVE.run <= 5.05);
+    assert.ok(BOT.react >= 0.65);
+    assert.ok(BOT.turnEnemy < 2.2);
+    assert.ok(BOT.cone > 1.5);
   });
 
   it("opening buy cannot afford a rifle", () => {
