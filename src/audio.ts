@@ -3,7 +3,6 @@ export class AudioEngine {
   ctx: AudioContext | null = null;
   master: GainNode | null = null;
   muted = false;
-  private footT = 0;
 
   unlock(): void {
     if (!this.ctx) {
@@ -72,9 +71,9 @@ export class AudioEngine {
         this.tone(400, 0.08, "square", 0.12 * g);
         break;
       case "anvil":
-        this.noise(0.16, 0.72 * g, 120, 1600);
-        this.tone(110, 0.18, "sawtooth", 0.28 * g);
-        this.tone(58, 0.2, "sine", 0.18 * g);
+        this.noise(0.22, 0.98 * g, 100, 1900);
+        this.tone(105, 0.24, "sawtooth", 0.42 * g);
+        this.tone(52, 0.26, "sine", 0.28 * g);
         break;
       case "stitch":
         this.noise(0.07, 0.48 * g, 900, 6200);
@@ -109,13 +108,10 @@ export class AudioEngine {
     this.tone(180, 0.04, "square", 0.06);
   }
 
-  footstep(rate: number, quiet = false): void {
-    this.footT += rate;
-    if (this.footT < 1) return;
-    this.footT = 0;
-    const g = quiet ? 0.035 : 0.1;
-    this.noise(0.045, g, 80, 500);
-    this.tone(70 + Math.random() * 20, 0.04, "sine", quiet ? 0.015 : 0.045);
+  footstep(quiet = false, distGain = 1): void {
+    const g = (quiet ? 0.035 : 0.14) * distGain;
+    this.noise(0.05, g, 80, 520);
+    this.tone(70 + Math.random() * 20, 0.045, "sine", (quiet ? 0.014 : 0.055) * distGain);
   }
 
   jump(): void {
@@ -127,19 +123,21 @@ export class AudioEngine {
   }
 
   reload(): void {
-    this.tone(220, 0.05, "square", 0.05);
-    this.tone(180, 0.06, "square", 0.04, 0.12);
-    this.tone(260, 0.05, "triangle", 0.05, 0.28);
+    this.tone(210, 0.07, "square", 0.1);
+    this.tone(160, 0.08, "square", 0.08, 0.14);
+    this.tone(280, 0.07, "triangle", 0.1, 0.32);
+    this.noise(0.04, 0.08, 400, 1800, 0.2);
   }
 
   hit(head: boolean): void {
     if (head) {
-      this.tone(980, 0.1, "square", 0.2);
-      this.tone(1480, 0.07, "sine", 0.14);
-      this.noise(0.04, 0.16, 1800, 7000);
+      this.tone(1100, 0.16, "square", 0.36);
+      this.tone(1600, 0.12, "sine", 0.26);
+      this.noise(0.07, 0.28, 1600, 7500);
     } else {
-      this.tone(240, 0.07, "sine", 0.14);
-      this.noise(0.035, 0.12, 600, 3200);
+      this.tone(280, 0.12, "sine", 0.3);
+      this.tone(190, 0.1, "square", 0.16);
+      this.noise(0.06, 0.24, 500, 3400);
     }
   }
 

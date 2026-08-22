@@ -28,6 +28,15 @@ body {
   height: 100%;
 }
 
+#fx {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+}
+
 .hidden {
   display: none !important;
 }
@@ -328,11 +337,11 @@ h1 {
   position: fixed;
   left: 50%;
   top: 50%;
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
-  border: 3px solid #f4d45a;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border: 4px solid #ffe45a;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.7), 0 0 12px #fff36a;
   transform: rotate(45deg);
   opacity: 0;
   z-index: 6;
@@ -368,28 +377,32 @@ h1 {
 #progress {
   position: fixed;
   left: 50%;
-  bottom: 160px;
+  bottom: 168px;
   transform: translateX(-50%);
-  width: 240px;
+  width: 320px;
   z-index: 6;
+  pointer-events: none;
 }
 
 #progress-label {
   text-align: center;
-  letter-spacing: 0.2em;
-  font-size: 12px;
-  margin-bottom: 6px;
+  letter-spacing: 0.18em;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-shadow: 0 1px 0 #000;
 }
 
 #progress-track {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.12);
+  height: 12px;
+  background: rgba(8, 10, 10, 0.72);
+  border: 1px solid rgba(244, 240, 228, 0.45);
 }
 
 #progress-bar {
   height: 100%;
   width: 0;
-  background: var(--raid);
+  background: linear-gradient(90deg, #e07a3a, #ffe45a);
 }
 
 #buy {
