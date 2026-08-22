@@ -1156,7 +1156,7 @@ export class Raidline {
     const spread =
       w.def.category === "melee"
         ? 0
-        : (shotCone(w.def.spreadStand, w.def.spreadMove, move, still) + Math.abs(spray.x) * 0.25) * ads * botTight +
+        : (shotCone(w.def.spreadStand, w.def.spreadMove, move, still) + Math.abs(spray.x) * 0.08) * ads * botTight +
           (a.bot ? BOT.spreadExtra : 0);
     for (let p = 0; p < w.def.pellets; p++) {
       const yaw = a.yaw + spray.x + (Math.random() - 0.5) * spread * 2;

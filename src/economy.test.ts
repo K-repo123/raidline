@@ -59,9 +59,23 @@ describe("economy and weapons", () => {
   it("first-shot camera climb is pull-down-able, not a horizon slap", () => {
     const dart = viewKick(WEAPONS.dart, 0);
     const anvil = viewKick(WEAPONS.anvil, 0);
-    assert.ok(dart.pitch > 0 && dart.pitch < 0.04);
+    assert.ok(dart.pitch > 0 && dart.pitch < 0.03);
     assert.ok(anvil.pitch > dart.pitch);
-    assert.ok(anvil.pitch < 0.08);
+    assert.ok(anvil.pitch < 0.05);
+  });
+
+  it("a 5-shot standing burst stays on a mid-range body if you pull down", () => {
+    const w = makeWeapon("ridge");
+    let kickSum = 0;
+    for (let i = 0; i < 5; i++) {
+      const s = sprayOffset(w);
+      assert.ok(Math.abs(s.y) * 18 < 0.34, `shot ${i} bullet climb ${s.y}`);
+      assert.ok(Math.abs(s.x) * 18 < 0.34, `shot ${i} bullet sway ${s.x}`);
+      kickSum += viewKick(w.def, i).pitch;
+      w.shots += 1;
+      w.recoil += w.def.recoilY;
+    }
+    assert.ok(kickSum > 0 && kickSum < 0.14, `burst camera climb ${kickSum}`);
   });
 
   it("vest soaks HP instead of passing the full chunk", () => {
