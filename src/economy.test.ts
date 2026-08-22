@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MATCH } from "./config";
-import { GEAR, PLAYER_HURT_PER_TICK, WEAPONS, botChipDamage, hitDamage, makeWeapon, soakArmor, sprayOffset, takePlayerHurt, viewKick } from "./weapons";
+import { GEAR, PLAYER_HURT_PER_SECOND, PLAYER_HURT_PER_TICK, WEAPONS, botChipDamage, hitDamage, makeWeapon, soakArmor, sprayOffset, takePlayerHurt, viewKick } from "./weapons";
 
 describe("economy and weapons", () => {
   it("bot-vs-bot wipes cannot decide a round before 45s", () => {
     assert.equal(MATCH.minWipeTime, 45);
+  });
+
+  it("spawn protection and bot fire delay are set", () => {
+    assert.equal(MATCH.spawnProt, 3);
+    assert.equal(MATCH.botFireDelay, 1.5);
   });
 
   it("opening buy cannot afford a rifle", () => {
@@ -68,6 +73,22 @@ describe("economy and weapons", () => {
     }
     assert.ok(hp >= 100 - PLAYER_HURT_PER_TICK);
     assert.ok(hp > 50);
+  });
+
+  it("per-second cap keeps a 5-bot dump under 100", () => {
+    let hp = 100;
+    let second = PLAYER_HURT_PER_SECOND;
+    for (let tick = 0; tick < 8; tick++) {
+      let budget = PLAYER_HURT_PER_TICK;
+      for (let i = 0; i < 5; i++) {
+        const step = takePlayerHurt(Math.min(budget, second), 20);
+        budget -= step.take;
+        second -= step.take;
+        hp -= step.take;
+      }
+    }
+    assert.ok(hp >= 100 - PLAYER_HURT_PER_SECOND);
+    assert.ok(hp > 60);
   });
 
   it("names stay original", () => {

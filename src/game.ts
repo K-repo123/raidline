@@ -25,6 +25,7 @@ import {
   WEAPONS,
   applyRecoil,
   cycleTime,
+  PLAYER_HURT_PER_SECOND,
   PLAYER_HURT_PER_TICK,
   botChipDamage,
   hitDamage,
@@ -147,6 +148,9 @@ export class Raidline {
   siteHintT = 0;
   hpTicks: { n: number; t: number }[] = [];
   playerHurtBudget = PLAYER_HURT_PER_TICK;
+  playerHurtSecondBudget = PLAYER_HURT_PER_SECOND;
+  playerHurtSecondT = 0;
+  spawnProtT = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -488,8 +492,12 @@ export class Raidline {
     this.defuseT = 0;
     this.bombT = 0;
     this.liveElapsed = 0;
+    this.spawnProtT = 0;
     this.siteHintT = 0;
     this.hpTicks = [];
+    this.playerHurtBudget = PLAYER_HURT_PER_TICK;
+    this.playerHurtSecondBudget = PLAYER_HURT_PER_SECOND;
+    this.playerHurtSecondT = 0;
     this.buyOpen = true;
     this.scoped = false;
     this.smokeT = [];
@@ -510,24 +518,25 @@ export class Raidline {
       a.pistol.mag = a.pistol.def.mag;
       if (a.primary) a.primary.mag = a.primary.def.mag;
       a.active = a.primary ? "primary" : "pistol";
-      const side = a.team === TEAM.RAID ? this.map.raidSpawn : this.map.lineSpawn;
-      const lane = (a.spawnOffset - 2) * 1.85;
-      const forward = a.team === TEAM.RAID ? 2.4 : -2.4;
-      a.x = side.x + lane;
-      a.z = side.z + (a === this.player ? 0 : forward);
-      a.y = 0;
-      a.yaw = side.yaw;
-      a.pitch = 0;
-      a.nextWp = a.team === TEAM.RAID ? "raid" : "line";
-      if (a.bot && a.team !== this.attackTeam && a.spawnOffset === 0) {
-        a.x = 3.6;
-        a.z = -16;
-        a.yaw = Math.PI;
-        a.nextWp = "yard";
-      }
+      this.placeAtSpawn(a);
     }
     this.audio.roundStart();
     this.hud();
+  }
+
+  placeAtSpawn(a: Actor): void {
+    const side = a.team === TEAM.RAID ? this.map.raidSpawn : this.map.lineSpawn;
+    const lane = (a.spawnOffset - 2) * 1.85;
+    const forward = a === this.player ? 0 : a.team === TEAM.RAID ? 2.4 : -2.4;
+    a.x = side.x + lane;
+    a.z = side.z + forward;
+    a.y = 0;
+    a.vx = a.vy = a.vz = 0;
+    a.yaw = side.yaw;
+    a.pitch = 0;
+    a.fireHold = false;
+    a.aimT = 0;
+    a.nextWp = a.team === TEAM.RAID ? "raid" : "line";
   }
 
   canBuy(): boolean {
@@ -629,6 +638,12 @@ export class Raidline {
     }
     this.timer -= dt;
     if (this.phase === "live" || this.phase === "planted") this.liveElapsed += dt;
+    this.spawnProtT = Math.max(0, this.spawnProtT - dt);
+    this.playerHurtSecondT += dt;
+    if (this.playerHurtSecondT >= 1) {
+      this.playerHurtSecondT = 0;
+      this.playerHurtSecondBudget = PLAYER_HURT_PER_SECOND;
+    }
     this.flash = Math.max(0, this.flash - dt * 0.65);
     this.hitmark = Math.max(0, this.hitmark - dt * 1.7);
     this.dmgT = Math.max(0, this.dmgT - dt);
@@ -687,8 +702,11 @@ export class Raidline {
     this.phase = "live";
     this.timer = MATCH.roundTime;
     this.liveElapsed = 0;
+    this.spawnProtT = MATCH.spawnProt;
     this.buyOpen = false;
     this.playerHurtBudget = PLAYER_HURT_PER_TICK;
+    this.playerHurtSecondBudget = PLAYER_HURT_PER_SECOND;
+    this.playerHurtSecondT = 0;
     if (!this.lockButtonDown) {
       this.ignoreFireUntilUp = false;
       this.pendingLockClick = false;
@@ -696,8 +714,7 @@ export class Raidline {
     }
     for (const a of this.actors) {
       if (!a.bot) continue;
-      a.aimT = -0.35 * (a.spawnOffset % 5);
-      a.fireHold = false;
+      this.placeAtSpawn(a);
     }
     this.hud();
   }
@@ -986,6 +1003,7 @@ export class Raidline {
     const want = a === this.player ? this.fireHeld || this.mouseDown : a.fireHold;
     if (!want || !a.alive) return;
     if (this.phase === "freeze" || this.phase === "end") return;
+    if (a.bot && this.liveElapsed < MATCH.botFireDelay) return;
     if (a === this.player && this.buyOpen) {
       if (!this.locked) return;
       this.buyOpen = false;
@@ -1120,13 +1138,16 @@ export class Raidline {
 
   hurt(target: Actor, dmg: number, src: Actor, head: boolean): void {
     if (!target.alive) return;
+    if (target === this.player && (this.phase === "freeze" || this.spawnProtT > 0)) return;
     if (src.bot && target.bot && this.liveElapsed < MATCH.minWipeTime) return;
     let incoming = soakArmor(target.armor, target.helm, dmg, head);
     if (src.bot && target === this.player) {
       incoming = { hp: botChipDamage(incoming.hp, target.armor > 0), armor: incoming.armor };
-      const capped = takePlayerHurt(this.playerHurtBudget, incoming.hp);
-      this.playerHurtBudget = capped.budget;
-      incoming = { hp: capped.take, armor: incoming.armor };
+      const tick = takePlayerHurt(this.playerHurtBudget, incoming.hp);
+      this.playerHurtBudget = tick.budget;
+      const second = takePlayerHurt(this.playerHurtSecondBudget, tick.take);
+      this.playerHurtSecondBudget = second.budget;
+      incoming = { hp: second.take, armor: incoming.armor };
     }
     target.armor = incoming.armor;
     target.hp -= incoming.hp;
@@ -1599,6 +1620,8 @@ export class Raidline {
     const showT = this.phase === "planted" ? this.bombT : this.timer;
     el("clock").textContent = this.fmt(Math.max(0, showT));
     el("phase").textContent = this.phaseLabel();
+    const protOn = this.phase === "freeze" || (this.phase === "live" && this.spawnProtT > 0);
+    el("spawn-prot").classList.toggle("hidden", !protOn);
     el("bomb-icon").classList.toggle("hidden", !p.hasBomb && !this.bombArmed);
     el("bomb-icon").textContent = p.hasBomb ? "CHARGE" : this.bombArmed ? `LIVE ${this.bombSite?.id ?? ""}` : "";
     el("buy").classList.toggle("hidden", !this.buyOpen);

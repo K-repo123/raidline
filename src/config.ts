@@ -24,6 +24,8 @@ export const MATCH = {
   maxMoney: 16000,
   buyWindow: 20,
   minWipeTime: 45,
+  spawnProt: 3,
+  botFireDelay: 1.5,
 } as const;
 
 export const MOVE = {
