@@ -1098,9 +1098,9 @@ export class Raidline {
       a.pitch += kick.pitch;
       a.yaw += kick.yaw;
       a.pitch = Math.max(-1.35, Math.min(1.35, a.pitch));
-      this.muzzleT = 0.16;
+      this.muzzleT = 0.12;
       this.gunPunch = 1;
-      if (this.muzzle) this.muzzle.intensity = 36;
+      if (this.muzzle) this.muzzle.intensity = 28;
     }
   }
 
@@ -1415,12 +1415,12 @@ export class Raidline {
     const dip = w.reloading > 0 ? 0.08 + Math.sin(rel * Math.PI) * 0.05 : 0;
     const punch = this.gunPunch;
     this.viewmodel.position.set(
-      Math.sin(this.bob) * 0.012 + punch * 0.006,
-      Math.abs(Math.sin(this.bob * 2)) * 0.01 - holster - dip - punch * 0.028,
-      punch * 0.04,
+      Math.sin(this.bob) * 0.012 + punch * 0.002,
+      Math.abs(Math.sin(this.bob * 2)) * 0.01 - holster - dip - punch * 0.008,
+      punch * 0.012,
     );
-    this.viewmodel.rotation.x = (w.reloading > 0 ? 0.72 + Math.sin(rel * 14) * 0.16 : 0) - punch * 0.24;
-    this.viewmodel.rotation.z = (w.reloading > 0 ? Math.sin(rel * 10) * 0.28 : 0) + punch * 0.1;
+    this.viewmodel.rotation.x = (w.reloading > 0 ? 0.72 + Math.sin(rel * 14) * 0.16 : 0) - punch * 0.05;
+    this.viewmodel.rotation.z = (w.reloading > 0 ? Math.sin(rel * 10) * 0.28 : 0) + punch * 0.02;
   }
 
   orbitMenu(dt: number): void {
@@ -1546,8 +1546,8 @@ export class Raidline {
 
   tickFx(dt: number): void {
     this.muzzleT = Math.max(0, this.muzzleT - dt);
-    this.gunPunch = Math.max(0, this.gunPunch - dt * 7);
-    if (this.muzzle) this.muzzle.intensity = this.muzzleT > 0 ? 36 * (this.muzzleT / 0.16) : 0;
+    this.gunPunch = Math.max(0, this.gunPunch - dt * 10);
+    if (this.muzzle) this.muzzle.intensity = this.muzzleT > 0 ? 28 * (this.muzzleT / 0.12) : 0;
     if (this.muzzleSprite) {
       const mat = this.muzzleSprite.material as THREE.MeshBasicMaterial;
       mat.opacity = this.muzzleT > 0 ? Math.min(1, this.muzzleT / 0.04) : 0;

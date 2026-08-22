@@ -9,7 +9,9 @@ export function radarWorldToCanvas(
 ): { x: number; y: number } {
   const nx = (x - world.minX) / (world.maxX - world.minX);
   const nz = (z - world.minZ) / (world.maxZ - world.minZ);
-  return { x: nx * size, y: (1 - nz) * size };
+  // World +X is camera-left at yaw 0 (A is -X / view-right). Flip X so the
+  // pip walks toward A Vault on the radar and a left turn moves the notch left.
+  return { x: (1 - nx) * size, y: (1 - nz) * size };
 }
 
 /** Tip of the look-yaw notch in canvas space. */
