@@ -325,32 +325,3 @@ export function huntPeekGoal(playerZ: number, botId: number): string | null {
   if (playerZ >= -18) return null;
   return botId % 3 === 0 ? "cutL" : botId % 3 === 1 ? "cutR" : "aAlley";
 }
-
-/** RAID / LINE pads behind the spawn lips. Side walk-arounds are outside. */
-export function teamSpawnBounds(raid: boolean): { minX: number; maxX: number; minZ: number; maxZ: number } {
-  if (raid) return { minX: -7.6, maxX: 7.6, minZ: -46, maxZ: -33.45 };
-  return { minX: -7.6, maxX: 7.6, minZ: 33.45, maxZ: 48 };
-}
-
-export function inTeamSpawn(raid: boolean, x: number, z: number): boolean {
-  const b = teamSpawnBounds(raid);
-  return x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ;
-}
-
-export function clampToTeamSpawn(raid: boolean, x: number, z: number): { x: number; z: number } {
-  const b = teamSpawnBounds(raid);
-  return {
-    x: Math.max(b.minX, Math.min(b.maxX, x)),
-    z: Math.max(b.minZ, Math.min(b.maxZ, z)),
-  };
-}
-
-/** Extra lips on the side lanes so freeze cannot leak onto mid. */
-export function freezeGateBoxes(): AABB[] {
-  return [
-    box(-8.6, 0, -33, 5.2, 3.6, 1.5),
-    box(8.6, 0, -33, 5.2, 3.6, 1.5),
-    box(-8.6, 0, 33, 5.2, 3.6, 1.5),
-    box(8.6, 0, 33, 5.2, 3.6, 1.5),
-  ];
-}

@@ -3,13 +3,10 @@ import { AudioEngine } from "./audio";
 import { BOT, COLORS, MATCH, MOVE, TEAM, type Team } from "./config";
 import {
   buildAshpier,
-  clampToTeamSpawn,
-  freezeGateBoxes,
   huntPeekGoal,
   nearestWaypoint,
   siteAt,
   waypointById,
-  type AABB,
   type MapData,
   type Site,
   type Waypoint,
@@ -162,8 +159,6 @@ export class Raidline {
   spawnProtT = 0;
   gunPunch = 0;
   lastArmed: "primary" | "pistol" | "melee" = "pistol";
-  freezeGateSolids: AABB[] = [];
-  freezeGateMeshes: THREE.Mesh[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -543,48 +538,8 @@ export class Raidline {
       a.active = a.primary ? "primary" : "pistol";
       this.placeAtSpawn(a);
     }
-    this.installFreezeGates();
     this.audio.roundStart();
     this.hud();
-  }
-
-  installFreezeGates(): void {
-    this.clearFreezeGates();
-    this.freezeGateSolids = freezeGateBoxes();
-    this.map.solids.push(...this.freezeGateSolids);
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0xc45a2a,
-      emissive: 0x6a2810,
-      emissiveIntensity: 0.35,
-      roughness: 0.7,
-    });
-    for (const b of this.freezeGateSolids) {
-      const m = new THREE.Mesh(
-        new THREE.BoxGeometry(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ),
-        mat,
-      );
-      m.position.set((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2);
-      this.scene.add(m);
-      this.freezeGateMeshes.push(m);
-    }
-  }
-
-  clearFreezeGates(): void {
-    if (this.freezeGateSolids.length) {
-      const drop = new Set(this.freezeGateSolids);
-      this.map.solids = this.map.solids.filter((s) => !drop.has(s));
-      this.freezeGateSolids = [];
-    }
-    for (const m of this.freezeGateMeshes) this.scene.remove(m);
-    this.freezeGateMeshes = [];
-  }
-
-  confineToSpawn(a: Actor): void {
-    const next = clampToTeamSpawn(a.team === TEAM.RAID, a.x, a.z);
-    if (next.x !== a.x) a.vx = 0;
-    if (next.z !== a.z) a.vz = 0;
-    a.x = next.x;
-    a.z = next.z;
   }
 
   placeAtSpawn(a: Actor): void {
@@ -716,17 +671,15 @@ export class Raidline {
 
     if (this.phase === "freeze") {
       for (const a of this.actors) if (a.bot) this.botBuy(a);
+      this.controlPlayer(this.player, dt);
+      this.integrate(this.player, dt);
+      this.stepSound(this.player, dt);
+      this.refreshMesh(this.player);
       for (const a of this.actors) {
-        if (!a.alive) {
-          this.refreshMesh(a);
-          continue;
-        }
-        if (a === this.player) this.controlPlayer(a, dt);
-        else this.controlBot(a, dt);
-        this.integrate(a, dt);
-        this.confineToSpawn(a);
+        if (!a.bot) continue;
+        a.vx = a.vz = 0;
         a.fireHold = false;
-        this.stepSound(a, dt);
+        a.aimT = 0;
         this.refreshMesh(a);
       }
       this.camFrom(this.player);
@@ -777,8 +730,6 @@ export class Raidline {
       this.pendingLockClick = false;
       this.fireHeld = false;
     }
-    this.clearFreezeGates();
-    for (const a of this.actors) this.confineToSpawn(a);
     this.hud();
   }
 
@@ -961,10 +912,6 @@ export class Raidline {
   }
 
   botGoal(a: Actor): string {
-    if (this.phase === "freeze") {
-      if (a.team === TEAM.RAID) return a.id % 2 === 0 ? "raidL" : "raidR";
-      return a.id % 2 === 0 ? "lineL" : "lineR";
-    }
     if (a.hasBomb) return a.id % 2 === 0 ? "aSite" : "bSite";
     if (this.bombArmed && this.bombSite) return this.bombSite.id === "A" ? "aSite" : "bSite";
     if (a.team !== this.player.team && this.player.alive) {
@@ -1833,7 +1780,7 @@ export class Raidline {
     if (this.paused) return "Paused — Resume to re-lock mouse";
     if (!this.player.alive) return "You are down — spectating";
     if (this.siteHintT > 0) return "Get to A Vault or B Quay";
-    if (this.phase === "freeze") return "Freeze — buy and walk spawn  ·  gates open on LIVE  ·  B to close";
+    if (this.phase === "freeze") return "Buy window — B to close  ·  walk is live  ·  1 Bit";
     const site = siteAt(this.map.sites, this.player.x, this.player.z);
     if (this.player.hasBomb && site) return `On ${site.id === "A" ? "A Vault" : "B Quay"} — hold E to arm the charge`;
     if (this.player.hasBomb) return "Carry the charge to A Vault or B Quay  ·  hold E to arm";
