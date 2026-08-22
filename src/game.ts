@@ -120,6 +120,9 @@ export class Raidline {
   smokeMeshes: THREE.Mesh[] = [];
   smokeT: { x: number; z: number; t: number }[] = [];
   tracer: THREE.Line | null = null;
+  viewmodel = new THREE.Group();
+  muzzle: THREE.PointLight | null = null;
+  bob = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -131,7 +134,8 @@ export class Raidline {
     this.renderer.toneMappingExposure = 1.05;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x6b7c86);
-    this.scene.fog = new THREE.Fog(0x6b7c86, 38, 92);
+    this.scene.fog = new THREE.Fog(0x6b7c86, 70, 160);
+    this.buildViewmodel();
     this.camera = new THREE.PerspectiveCamera(78, innerWidth / innerHeight, 0.05, 160);
     this.map = buildAshpier();
     this.scene.add(this.map.visuals);
@@ -144,7 +148,7 @@ export class Raidline {
   }
 
   light(): void {
-    const hemi = new THREE.HemisphereLight(0xc8d6e0, 0x3a3228, 0.85);
+    const hemi = new THREE.HemisphereLight(0xc8d6e0, 0x3a3228, 1.05);
     this.scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xffe2c4, 1.15);
     sun.position.set(-20, 34, -10);
@@ -200,7 +204,8 @@ export class Raidline {
       }
     });
     addEventListener("mousedown", (e) => {
-      if (!this.locked) return;
+      if (this.phase === "menu") return;
+      if (!this.locked) this.renderer.domElement.requestPointerLock();
       if (e.button === 0) this.mouseDown = true;
       if (e.button === 2) this.scoped = !this.scoped;
     });
@@ -327,9 +332,10 @@ export class Raidline {
       if (a.primary) a.primary.mag = a.primary.def.mag;
       a.active = a.primary ? "primary" : "pistol";
       const side = a.team === TEAM.RAID ? this.map.raidSpawn : this.map.lineSpawn;
-      const lane = (a.spawnOffset - 2) * 1.6;
+      const lane = (a.spawnOffset - 2) * 1.85;
+      const forward = a.team === TEAM.RAID ? 2.4 : -2.4;
       a.x = side.x + lane;
-      a.z = side.z;
+      a.z = side.z + (a === this.player ? 0 : forward);
       a.y = 0;
       a.yaw = side.yaw;
       a.pitch = 0;
@@ -774,6 +780,12 @@ export class Raidline {
     if (a === this.player) {
       a.pitch += w.def.recoilY * 0.35;
       a.yaw += (Math.random() - 0.5) * w.def.recoilX;
+      if (this.muzzle) {
+        this.muzzle.intensity = 8;
+        setTimeout(() => {
+          if (this.muzzle) this.muzzle.intensity = 0;
+        }, 35);
+      }
     }
   }
 
@@ -1027,10 +1039,41 @@ export class Raidline {
       eye.z + Math.cos(a.yaw) * Math.cos(a.pitch),
     );
     this.camera.lookAt(look);
+    this.updateViewmodel(a);
+  }
+
+  buildViewmodel(): void {
+    this.viewmodel.clear();
+    const steel = new THREE.MeshStandardMaterial({ color: 0x2a2c2e, metalness: 0.55, roughness: 0.35 });
+    const grip = new THREE.MeshStandardMaterial({ color: 0x3b2a20, roughness: 0.8 });
+    const accent = new THREE.MeshStandardMaterial({ color: 0xc45a2a, roughness: 0.4, metalness: 0.2 });
+    const rec = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.28), steel);
+    rec.position.set(0.22, -0.16, -0.38);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.22), steel);
+    bar.position.set(0.22, -0.13, -0.56);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.11, 0.07), grip);
+    mag.position.set(0.22, -0.24, -0.34);
+    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.06), accent);
+    sight.position.set(0.22, -0.1, -0.46);
+    this.muzzle = new THREE.PointLight(0xffcc66, 0, 3, 2);
+    this.muzzle.position.set(0.22, -0.13, -0.72);
+    this.viewmodel.add(rec, bar, mag, sight, this.muzzle);
+    this.camera.add(this.viewmodel);
+    this.scene.add(this.camera);
+  }
+
+  updateViewmodel(a: Actor): void {
+    this.viewmodel.visible = this.phase !== "menu";
+    const spd = groundSpeed(a.vx, a.vz);
+    this.bob += spd * 0.018;
+    const holster = this.phase === "freeze" ? 0.08 : 0;
+    this.viewmodel.position.set(Math.sin(this.bob) * 0.012, Math.abs(Math.sin(this.bob * 2)) * 0.01 - holster, 0);
+    this.viewmodel.rotation.x = a.pitch * 0.04;
   }
 
   orbitMenu(dt: number): void {
     this.lookX += dt * 0.12;
+    this.viewmodel.visible = false;
     this.camera.position.set(Math.sin(this.lookX) * 28, 14, Math.cos(this.lookX) * 28 - 4);
     this.camera.lookAt(0, 1, 4);
   }
@@ -1043,19 +1086,34 @@ export class Raidline {
       const g = new THREE.Group();
       const color = a.team === TEAM.RAID ? COLORS.raid : COLORS.line;
       const body = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.32, 0.72, 4, 8),
-        new THREE.MeshStandardMaterial({ color, roughness: 0.55 }),
+        new THREE.CapsuleGeometry(0.34, 0.78, 5, 10),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.45, emissive: color, emissiveIntensity: 0.18 }),
       );
-      body.position.y = 0.9;
+      body.position.y = 0.94;
       body.castShadow = true;
       const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.2, 10, 8),
-        new THREE.MeshStandardMaterial({ color: 0xe0c8a8, roughness: 0.7 }),
+        new THREE.SphereGeometry(0.22, 12, 10),
+        new THREE.MeshStandardMaterial({ color: 0xf0d2b0, roughness: 0.65 }),
       );
-      head.position.y = 1.52;
+      head.position.y = 1.58;
       head.castShadow = true;
-      g.add(body);
-      g.add(head);
+      const pack = new THREE.Mesh(
+        new THREE.BoxGeometry(0.34, 0.22, 0.16),
+        new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 }),
+      );
+      pack.position.set(0, 1.05, -0.22);
+      const c = document.createElement("canvas");
+      c.width = 256;
+      c.height = 64;
+      const ctx = c.getContext("2d")!;
+      ctx.fillStyle = a.team === TEAM.RAID ? "#e07a3a" : "#3ec8c0";
+      ctx.font = "700 36px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(a.name, 128, 44);
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
+      spr.position.y = 2.05;
+      spr.scale.set(1.6, 0.4, 1);
+      g.add(body, head, pack, spr);
       this.scene.add(g);
       this.meshes.set(a.id, g);
     }
@@ -1073,14 +1131,14 @@ export class Raidline {
   flashTracer(from: THREE.Vector3, to: THREE.Vector3): void {
     if (this.tracer) this.scene.remove(this.tracer);
     const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
-    this.tracer = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe6a0, transparent: true, opacity: 0.55 }));
+    this.tracer = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xfff1c2, transparent: true, opacity: 0.85 }));
     this.scene.add(this.tracer);
     setTimeout(() => {
       if (this.tracer) {
         this.scene.remove(this.tracer);
         this.tracer = null;
       }
-    }, 40);
+    }, 70);
   }
 
   draw(): void {
@@ -1159,6 +1217,7 @@ export class Raidline {
     kf.innerHTML = this.kills.map((k) => `<div class="${k.head ? "hs" : ""}">${escapeHtml(k.text)}</div>`).join("");
     if (this.tabOpen) this.fillBoard();
     el("hint").textContent = this.hint();
+    el("relock").classList.toggle("hidden", this.locked || this.phase === "menu");
     document.body.dataset.team = p.team === TEAM.RAID ? "raid" : "line";
   }
 

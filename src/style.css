@@ -443,6 +443,21 @@ h1 {
   font-family: "IBM Plex Mono", monospace;
 }
 
+#relock {
+  position: fixed;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  z-index: 8;
+  pointer-events: none;
+  letter-spacing: 0.16em;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--panel);
+  padding: 8px 14px;
+  border: 1px solid rgba(232, 226, 212, 0.16);
+}
+
 #scoreboard {
   position: fixed;
   left: 50%;
