@@ -17,7 +17,7 @@ import {
   segmentHitsBoxes,
   stepMovement,
 } from "./physics";
-import { isMatchPhase, nextBuyOpen, shouldDiscardLook } from "./playControls";
+import { isMatchPhase, nextBuyOpen, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
 import { radarWorldToCanvas, radarYawTip } from "./radar";
 import { isTitleStartKey } from "./titleStart";
 import {
@@ -25,8 +25,10 @@ import {
   WEAPONS,
   applyRecoil,
   cycleTime,
+  botChipDamage,
   hitDamage,
   makeWeapon,
+  soakArmor,
   sprayOffset,
   viewKick,
   type WeaponState,
@@ -136,6 +138,11 @@ export class Raidline {
   paused = false;
   ignoreLook = 0;
   fireHeld = false;
+  ignoreFireUntilUp = false;
+  pendingLockClick = false;
+  liveElapsed = 0;
+  siteHintT = 0;
+  hpTicks: { n: number; t: number }[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -232,10 +239,16 @@ export class Raidline {
       if (e.button === 0) {
         this.mouseDown = false;
         this.fireHeld = false;
+        this.ignoreFireUntilUp = false;
+        this.pendingLockClick = false;
       }
     });
     document.addEventListener("pointermove", (e) => {
-      if (this.locked) this.fireHeld = (e.buttons & 1) !== 0;
+      if (shouldIgnoreLockShot(this.locked, this.ignoreFireUntilUp)) {
+        this.fireHeld = false;
+        return;
+      }
+      this.fireHeld = (e.buttons & 1) !== 0;
     });
     addEventListener("contextmenu", (e) => e.preventDefault());
     document.addEventListener("mousemove", (e) => this.onLook(e));
@@ -274,7 +287,12 @@ export class Raidline {
     const now = document.pointerLockElement === canvas;
     const lost = this.locked && !now;
     this.locked = now;
-    if (now) this.ignoreLook = 2;
+    if (now) {
+      this.ignoreLook = 2;
+      this.fireHeld = false;
+      this.mouseDown = false;
+      if (this.pendingLockClick) this.ignoreFireUntilUp = true;
+    }
     if (lost) {
       this.fireHeld = false;
       this.mouseDown = false;
@@ -286,6 +304,9 @@ export class Raidline {
   requestLock(): void {
     const canvas = this.renderer.domElement;
     this.ignoreLook = 2;
+    this.ignoreFireUntilUp = true;
+    this.fireHeld = false;
+    this.mouseDown = false;
     try {
       const lock = canvas.requestPointerLock();
       if (lock && typeof (lock as Promise<void>).catch === "function") {
@@ -320,9 +341,13 @@ export class Raidline {
       return;
     }
     if (e.button !== 0) return;
-    if (!this.locked) {
+    if (!this.locked || this.ignoreFireUntilUp) {
       this.buyOpen = false;
       this.hud();
+      this.pendingLockClick = true;
+      this.ignoreFireUntilUp = true;
+      this.fireHeld = false;
+      this.mouseDown = false;
       this.requestLock();
       return;
     }
@@ -455,6 +480,9 @@ export class Raidline {
     this.plantT = 0;
     this.defuseT = 0;
     this.bombT = 0;
+    this.liveElapsed = 0;
+    this.siteHintT = 0;
+    this.hpTicks = [];
     this.buyOpen = true;
     this.scoped = false;
     this.smokeT = [];
@@ -593,9 +621,12 @@ export class Raidline {
       return;
     }
     this.timer -= dt;
+    if (this.phase === "live" || this.phase === "planted") this.liveElapsed += dt;
     this.flash = Math.max(0, this.flash - dt * 0.65);
     this.hitmark = Math.max(0, this.hitmark - dt * 1.7);
     this.dmgT = Math.max(0, this.dmgT - dt);
+    this.siteHintT = Math.max(0, this.siteHintT - dt);
+    this.hpTicks = this.hpTicks.filter((tick) => (tick.t -= dt) > 0);
     this.kills = this.kills.filter((k) => (k.t -= dt) > 0);
     for (const s of this.smokeT) s.t -= dt;
     this.smokeT = this.smokeT.filter((s) => s.t > 0);
@@ -751,24 +782,22 @@ export class Raidline {
     const dist = Math.hypot(dx, dz);
     const wantYaw = enemy ? Math.atan2(enemy.x - a.x, enemy.z - a.z) : Math.atan2(dx, dz);
     const live = this.phase === "live" || this.phase === "planted";
-    if (enemy && live && dist < 28) {
-      a.yaw = wantYaw;
-      const ey = enemy.y + (enemy.crouch ? 1.08 : 1.42);
-      a.pitch = Math.atan2(ey - (a.y + 1.5), Math.hypot(enemy.x - a.x, enemy.z - a.z));
-      a.fireHold = true;
+    a.yaw = this.turn(a.yaw, wantYaw, dt * (enemy ? 4.2 : 3.2));
+    if (enemy && live) {
+      a.aimT += dt;
+      const chest = enemy.y + (enemy.crouch ? 0.82 : 1.05);
+      const wantPitch = Math.atan2(chest - (a.y + 1.5), Math.hypot(enemy.x - a.x, enemy.z - a.z));
+      a.pitch = this.turn(a.pitch, wantPitch + (Math.random() - 0.5) * 0.04, dt * 4.4);
+      let aim = wantYaw - a.yaw;
+      while (aim > Math.PI) aim -= Math.PI * 2;
+      while (aim < -Math.PI) aim += Math.PI * 2;
+      const vsPlayer = enemy === this.player;
+      const allowBotFight = vsPlayer || this.liveElapsed >= MATCH.minWipeTime;
+      a.fireHold = allowBotFight && a.aimT > 0.55 && Math.abs(aim) < 0.28;
     } else {
-      a.yaw = this.turn(a.yaw, wantYaw, dt * (enemy ? 8.4 : 3.6));
-      if (enemy) {
-        const ey = enemy.y + (enemy.crouch ? 1.08 : 1.42);
-        a.pitch = this.turn(a.pitch, Math.atan2(ey - (a.y + 1.5), Math.hypot(enemy.x - a.x, enemy.z - a.z)), dt * 8);
-        let aim = wantYaw - a.yaw;
-        while (aim > Math.PI) aim -= Math.PI * 2;
-        while (aim < -Math.PI) aim += Math.PI * 2;
-        a.fireHold = live && Math.abs(aim) < 0.22;
-      } else {
-        a.pitch *= 1 - dt * 3;
-        a.fireHold = false;
-      }
+      a.aimT = 0;
+      a.pitch *= 1 - dt * 3;
+      a.fireHold = false;
     }
 
     const fight = !!enemy && a.fireHold && dist < 28;
@@ -872,14 +901,24 @@ export class Raidline {
     if (!this.player.alive || this.phase === "end" || this.phase === "freeze") return;
     const holding = this.keys.has("KeyE");
     const site = siteAt(this.map.sites, this.player.x, this.player.z);
-    if (holding && this.player.hasBomb && site && !this.bombArmed) {
+    const nearBomb = this.bombArmed && Math.hypot(this.player.x - this.bombX, this.player.z - this.bombZ) < 1.5;
+    const use = siteUseState({
+      holdingE: holding,
+      onSite: !!site,
+      nearBomb,
+      hasBomb: this.player.hasBomb,
+      bombArmed: this.bombArmed,
+      defending: this.player.team !== this.attackTeam,
+    });
+    if (use.offSiteHint) this.siteHintT = 1.8;
+    if (use.progressPlant) {
       this.plantT += dt;
       if (Math.floor(this.plantT * 4) !== Math.floor((this.plantT - dt) * 4)) this.audio.plantTick();
       if (this.plantT >= MATCH.plantTime) this.plant(this.player);
-    } else if (!(holding && this.player.hasBomb && site)) {
-      if (!this.bombArmed) this.plantT = 0;
+    } else if (!this.bombArmed) {
+      this.plantT = 0;
     }
-    if (holding && this.bombArmed && this.player.team !== this.attackTeam && Math.hypot(this.player.x - this.bombX, this.player.z - this.bombZ) < 1.5) {
+    if (use.progressDefuse) {
       this.defuseT += dt;
       if (Math.floor(this.defuseT * 8) !== Math.floor((this.defuseT - dt) * 8)) this.audio.defuse();
       const need = this.player.kit ? MATCH.defuseTime : MATCH.defuseNoKit;
@@ -921,6 +960,7 @@ export class Raidline {
 
   tryShoot(a: Actor): void {
     if (this.paused) return;
+    if (a === this.player && this.ignoreFireUntilUp) return;
     const want = a === this.player ? this.fireHeld || this.mouseDown : a.fireHold;
     if (!want || !a.alive) return;
     if (this.phase === "freeze" || this.phase === "end") return;
@@ -941,6 +981,7 @@ export class Raidline {
       } else a.fireHold = false;
     }
     this.fire(a);
+    if (a.bot) this.weapon(a).cooldown += 0.12;
   }
 
   fire(a: Actor): void {
@@ -959,7 +1000,7 @@ export class Raidline {
     const spd = groundSpeed(a.vx, a.vz);
     const move = moveInaccuracy(spd, !a.onGround, a.crouch, a.walk);
     const ads = a === this.player && this.scoped && w.def.id === "longline" ? 0.15 : 1;
-    const botTight = a.bot && spd < 1.6 ? 0.35 : 1;
+    const botTight = a.bot ? 1.35 : 1;
     const spread = (w.def.spreadStand + move * (w.def.spreadMove / 0.03) + Math.abs(spray.x) * 0.25) * ads * botTight;
     for (let p = 0; p < w.def.pellets; p++) {
       const yaw = a.yaw + spray.x + (Math.random() - 0.5) * spread * 2;
@@ -1001,9 +1042,11 @@ export class Raidline {
     const end = origin.clone().addScaledVector(dir, reach * bestT);
     this.flashTracer(origin, end);
     if (hit) {
+      if (a.bot && Math.random() > 0.1) head = false;
       const dist = origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z));
       const dmg = hitDamage(w.def, dist, head, hit.armor > 0, hit.helm);
       this.spawnImpact(end, head);
+      if (a === this.player) this.spawnBlood(end, head);
       this.hurt(hit, dmg, a, head);
     } else {
       this.spawnImpact(end, false);
@@ -1055,8 +1098,13 @@ export class Raidline {
 
   hurt(target: Actor, dmg: number, src: Actor, head: boolean): void {
     if (!target.alive) return;
-    if (target.armor > 0) target.armor = Math.max(0, target.armor - dmg * 0.35);
-    target.hp -= dmg;
+    if (src.bot && target.bot && this.liveElapsed < MATCH.minWipeTime) return;
+    let incoming = soakArmor(target.armor, target.helm, dmg, head);
+    if (src.bot && target === this.player) {
+      incoming = { hp: botChipDamage(incoming.hp, target.armor > 0), armor: incoming.armor };
+    }
+    target.armor = incoming.armor;
+    target.hp -= incoming.hp;
     if (src === this.player) {
       this.hitmark = 1;
       this.hitHead = head;
@@ -1064,9 +1112,11 @@ export class Raidline {
     }
     if (target === this.player) {
       this.audio.hurt();
-      this.dmgT = 0.45;
+      this.dmgT = 0.55;
       this.dmgDir = Math.atan2(src.x - target.x, src.z - target.z) - target.yaw;
       el("hurt").style.setProperty("--from", `${(this.dmgDir * 180) / Math.PI}deg`);
+      this.hpTicks.unshift({ n: Math.max(1, Math.round(incoming.hp)), t: 0.7 });
+      this.hpTicks = this.hpTicks.slice(0, 4);
     }
     if (target.hp <= 0) this.kill(target, src, head);
   }
@@ -1147,6 +1197,7 @@ export class Raidline {
     const eye = this.eye(a);
     for (const o of this.actors) {
       if (!o.alive || o.team === a.team) continue;
+      if (a.bot && o.bot && this.liveElapsed < MATCH.minWipeTime) continue;
       const d = Math.hypot(o.x - a.x, o.z - a.z);
       if (d > bestD) continue;
       const to = this.eye(o);
@@ -1173,8 +1224,9 @@ export class Raidline {
   checkRound(): void {
     const raidA = this.actors.some((a) => a.alive && a.team === TEAM.RAID);
     const lineA = this.actors.some((a) => a.alive && a.team === TEAM.LINE);
+    const early = this.liveElapsed < MATCH.minWipeTime && this.player.alive;
     if (!raidA && !this.bombArmed) this.endRound(TEAM.LINE, "Line holds");
-    else if (!lineA && !this.bombArmed) this.endRound(TEAM.RAID, "Raid clears");
+    else if (!lineA && !this.bombArmed && !early) this.endRound(TEAM.RAID, "Raid clears");
     else if (!lineA && this.bombArmed) {
       /* attackers already planted — clock must run unless defused; no instant win */
     } else if (!raidA && this.bombArmed) {
@@ -1361,13 +1413,24 @@ export class Raidline {
 
   spawnImpact(at: THREE.Vector3, head: boolean): void {
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(head ? 0.22 : 0.13, 8, 6),
-      new THREE.MeshBasicMaterial({ color: head ? 0xfff36a : 0xffb040, transparent: true, opacity: 1, depthTest: false }),
+      new THREE.SphereGeometry(head ? 0.1 : 0.07, 8, 6),
+      new THREE.MeshBasicMaterial({ color: head ? 0x2a1a12 : 0x1a1612, transparent: true, opacity: 0.95, depthTest: true }),
+    );
+    mesh.position.copy(at);
+    mesh.renderOrder = 7;
+    this.scene.add(mesh);
+    this.impacts.push({ mesh, t: 1.45 });
+  }
+
+  spawnBlood(at: THREE.Vector3, head: boolean): void {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(head ? 0.2 : 0.12, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0x8a1c18, transparent: true, opacity: 0.92, depthTest: false }),
     );
     mesh.position.copy(at);
     mesh.renderOrder = 9;
     this.scene.add(mesh);
-    this.impacts.push({ mesh, t: 0.12 });
+    this.impacts.push({ mesh, t: 1.25 });
   }
 
   tickFx(dt: number): void {
@@ -1384,7 +1447,7 @@ export class Raidline {
         const fx = list[i];
         fx.t -= dt;
         const mat = fx.mesh.material as THREE.MeshBasicMaterial;
-        mat.opacity = fx.t > 0.05 ? 1 : Math.max(0, fx.t / 0.05);
+        mat.opacity = fx.t > 0.35 ? Math.min(1, fx.t) : Math.max(0, fx.t / 0.35);
         if (fx.t <= 0) {
           this.scene.remove(fx.mesh);
           fx.mesh.geometry.dispose();
@@ -1521,13 +1584,22 @@ export class Raidline {
     el("hitmark").style.opacity = String(this.hitmark);
     el("hitmark").classList.toggle("hs", this.hitHead);
     el("flash").style.opacity = String(Math.min(1, this.flash));
-    el("hurt").style.opacity = this.dmgT > 0 ? "0.45" : "0";
+    el("hurt").style.opacity = this.dmgT > 0 ? String(Math.min(0.72, this.dmgT * 1.4)) : "0";
+    el("hurt-dir").style.opacity = this.dmgT > 0 ? "1" : "0";
+    el("hurt-dir").style.transform = `translate(-50%, -50%) rotate(${(this.dmgDir * 180) / Math.PI}deg)`;
+    el("hp-ticks").innerHTML = this.hpTicks.map((tick) => `<span>-${tick.n}</span>`).join("");
     const site = siteAt(this.map.sites, p.x, p.z);
-    const onSiteWithBomb = !!p.hasBomb && !!site && !this.bombArmed && this.phase !== "end";
-    const canDef =
-      this.bombArmed && p.team !== this.attackTeam && Math.hypot(p.x - this.bombX, p.z - this.bombZ) < 1.6 && this.phase !== "end";
-    const showBar = onSiteWithBomb || canDef || this.plantT > 0 || this.defuseT > 0;
-    const planting = onSiteWithBomb || this.plantT > 0;
+    const nearBomb = this.bombArmed && Math.hypot(p.x - this.bombX, p.z - this.bombZ) < 1.6;
+    const use = siteUseState({
+      holdingE: this.keys.has("KeyE"),
+      onSite: !!site,
+      nearBomb,
+      hasBomb: p.hasBomb,
+      bombArmed: this.bombArmed,
+      defending: p.team !== this.attackTeam,
+    });
+    const showBar = use.showBar && this.phase !== "end" && this.phase !== "freeze";
+    const planting = use.progressPlant;
     const denom = planting ? MATCH.plantTime : p.kit ? MATCH.defuseTime : MATCH.defuseNoKit;
     const raw = planting ? this.plantT : this.defuseT;
     el("progress").classList.toggle("hidden", !showBar);
@@ -1546,6 +1618,7 @@ export class Raidline {
 
   hint(): string {
     if (this.paused) return "Paused — Resume to re-lock mouse";
+    if (this.siteHintT > 0) return "Get to A Vault or B Quay — hold E on the pad";
     if (this.phase === "freeze") return "Buy window — B to close  ·  walk is live  ·  1–7 guns";
     const site = siteAt(this.map.sites, this.player.x, this.player.z);
     if (this.player.hasBomb && site) return `On ${site.id === "A" ? "A Vault" : "B Quay"} — hold E to arm the charge`;

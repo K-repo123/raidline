@@ -142,8 +142,9 @@ export class AudioEngine {
   }
 
   hurt(): void {
-    this.tone(85, 0.16, "sawtooth", 0.16);
-    this.noise(0.08, 0.14, 80, 500);
+    this.tone(78, 0.2, "sawtooth", 0.22);
+    this.tone(140, 0.1, "square", 0.1);
+    this.noise(0.1, 0.2, 80, 520);
   }
 
   buy(): void {

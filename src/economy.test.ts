@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MATCH } from "./config";
-import { GEAR, WEAPONS, hitDamage, makeWeapon, sprayOffset, viewKick } from "./weapons";
+import { GEAR, WEAPONS, botChipDamage, hitDamage, makeWeapon, soakArmor, sprayOffset, viewKick } from "./weapons";
 
 describe("economy and weapons", () => {
+  it("bot-vs-bot wipes cannot decide a round before 45s", () => {
+    assert.equal(MATCH.minWipeTime, 45);
+  });
+
   it("opening buy cannot afford a rifle", () => {
     assert.ok(MATCH.startMoney < WEAPONS.ridge.price);
     assert.ok(MATCH.startMoney >= GEAR.kevlar.price);
@@ -36,6 +40,21 @@ describe("economy and weapons", () => {
     const stitch = viewKick(WEAPONS.stitch, 0);
     assert.ok(anvil.pitch > stitch.pitch * 3);
     assert.ok(viewKick(WEAPONS.stitch, 8).pitch > stitch.pitch);
+  });
+
+  it("vest soaks HP instead of passing the full chunk", () => {
+    const raw = hitDamage(WEAPONS.ridge, 10, false, false, false);
+    const soaked = soakArmor(100, false, raw, false);
+    assert.ok(soaked.hp < raw * 0.6);
+    assert.ok(soaked.armor < 100);
+    assert.ok(soaked.hp > 8);
+  });
+
+  it("bot chips do not delete 100 HP in one bullet", () => {
+    const hs = hitDamage(WEAPONS.ridge, 8, true, true, true);
+    const chip = botChipDamage(soakArmor(100, true, hs, true).hp, true);
+    assert.ok(chip <= 14);
+    assert.ok(chip + 80 < 100);
   });
 
   it("names stay original", () => {
