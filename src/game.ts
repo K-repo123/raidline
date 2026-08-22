@@ -955,6 +955,7 @@ export class Raidline {
       defending: this.player.team !== this.attackTeam,
     });
     if (use.offSiteHint) this.siteHintT = 1.8;
+    this.hud();
   }
 
   useHold(dt: number): void {
