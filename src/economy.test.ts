@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MATCH } from "./config";
-import { GEAR, WEAPONS, botChipDamage, hitDamage, makeWeapon, soakArmor, sprayOffset, viewKick } from "./weapons";
+import { GEAR, PLAYER_HURT_PER_TICK, WEAPONS, botChipDamage, hitDamage, makeWeapon, soakArmor, sprayOffset, takePlayerHurt, viewKick } from "./weapons";
 
 describe("economy and weapons", () => {
   it("bot-vs-bot wipes cannot decide a round before 45s", () => {
@@ -55,6 +55,19 @@ describe("economy and weapons", () => {
     const chip = botChipDamage(soakArmor(100, true, hs, true).hp, true);
     assert.ok(chip <= 14);
     assert.ok(chip + 80 < 100);
+  });
+
+  it("five simultaneous bot chips cannot zero the player in one tick", () => {
+    let hp = 100;
+    let budget = PLAYER_HURT_PER_TICK;
+    for (let i = 0; i < 5; i++) {
+      const chip = botChipDamage(20, false);
+      const step = takePlayerHurt(budget, chip);
+      budget = step.budget;
+      hp -= step.take;
+    }
+    assert.ok(hp >= 100 - PLAYER_HURT_PER_TICK);
+    assert.ok(hp > 50);
   });
 
   it("names stay original", () => {

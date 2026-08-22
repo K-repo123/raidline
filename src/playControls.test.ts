@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isMatchPhase, nextBuyOpen, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
+import { isLockAcquireClick, isMatchPhase, nextBuyOpen, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
 
 describe("buy toggle", () => {
   it("B closes Supply even when the buy window has ended", () => {
@@ -33,6 +33,11 @@ describe("pointer-lock fire", () => {
     assert.equal(shouldIgnoreLockShot(false, false), true);
     assert.equal(shouldIgnoreLockShot(true, true), true);
     assert.equal(shouldIgnoreLockShot(true, false), false);
+  });
+
+  it("does not treat a later locked click as another lock-acquire", () => {
+    assert.equal(isLockAcquireClick(false), true);
+    assert.equal(isLockAcquireClick(true), false);
   });
 });
 
