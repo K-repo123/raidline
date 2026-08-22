@@ -1,0 +1,22 @@
+{
+  "name": "raidline",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Raidline — original browser tactical FPS",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && cp dist/index.html dist/404.html",
+    "preview": "vite preview --base /raidline/",
+    "test": "tsx --test src/physics.test.ts src/economy.test.ts src/titleStart.test.ts src/playControls.test.ts src/radar.test.ts"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.170.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  }
+}

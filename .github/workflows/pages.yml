@@ -1,0 +1,68 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main, cursor/raidline-cs-feel-pages-df5b, cursor/fix-title-start-51a8, cursor/fix-strafe-sign-51a8, cursor/fix-play-bugs-51a8, cursor/cs-feel-combat-51a8, cursor/cs-feel-radar-fx-51a8]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: cp dist/index.html dist/404.html && touch dist/.nojekyll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: dist
+
+  gh-pages-branch:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: dist
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true
+
+  pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: dist
+      - uses: actions/configure-pages@v5
+        continue-on-error: true
+      - uses: actions/upload-pages-artifact@v3
+        continue-on-error: true
+        with:
+          path: dist
+      - id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4

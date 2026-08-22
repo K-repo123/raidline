@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Raidline</title>
+    <link rel="icon" href="%BASE_URL%favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <canvas id="fx"></canvas>
+
+    <div id="menu">
+      <div class="menu-card">
+        <p class="kicker">ORIGINAL TACTICAL FPS</p>
+        <h1>RAIDLINE</h1>
+        <p class="lede">
+          Ashpier freight yard. Raid arms a charge at <em>A Vault</em> or <em>B Quay</em>.
+          Line cuts it or holds the clock. First to 8.
+        </p>
+        <ul class="menu-list">
+          <li>WASD move · Shift walk · Ctrl crouch · Space jump</li>
+          <li>Mouse fire · RMB Longline zoom · R reload · E arm / cut</li>
+          <li>B buy · Tab score · F flare · C veil · V burst</li>
+        </ul>
+        <button id="btn-play" type="button" autofocus>Enter Ashpier</button>
+        <p class="fine">No Valve maps, guns, or branding. Original IP.</p>
+      </div>
+    </div>
+
+    <div id="hud">
+      <div id="top">
+        <div class="team raid"><span id="score-raid">0</span> RAID</div>
+        <div class="clock-wrap">
+          <div id="clock">0:00</div>
+          <div id="phase">R0</div>
+        </div>
+        <div class="team line">LINE <span id="score-line">0</span></div>
+      </div>
+
+      <div id="killfeed"></div>
+      <div id="bomb-icon" class="hidden"></div>
+      <div id="hint"></div>
+
+      <div id="crosshair">
+        <i class="n"></i><i class="e"></i><i class="s"></i><i class="w"></i><i class="dot"></i>
+      </div>
+      <div id="hitmark"></div>
+      <div id="flash"></div>
+      <div id="hurt"></div>
+
+      <div id="progress" class="hidden">
+        <div id="progress-label">ARMING</div>
+        <div id="progress-track"><div id="progress-bar"></div></div>
+      </div>
+
+      <div id="bottom">
+        <canvas id="radar" width="168" height="168"></canvas>
+        <div class="vitals">
+          <div class="hp-row"><span id="hp">100</span><small>HP</small> <span id="armor">0</span><small>AR</small></div>
+          <div id="money">$800</div>
+        </div>
+        <div class="ammo-wrap">
+          <div id="ammo">12 / 24</div>
+          <div id="gun">Dart</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="buy" class="hidden">
+      <header>
+        <h2>Supply</h2>
+        <p>Original kit. Buy while you are in spawn.</p>
+      </header>
+      <div class="buy-grid">
+        <section>
+          <h3>Sidearms</h3>
+          <button type="button" data-buy="dart">1 Dart <b>$200</b></button>
+          <button type="button" data-buy="anvil">2 Anvil <b>$700</b></button>
+        </section>
+        <section>
+          <h3>Primaries</h3>
+          <button type="button" data-buy="stitch">3 Stitch <b>$1250</b></button>
+          <button type="button" data-buy="ridge">4 Ridge-15 <b>$2700</b></button>
+          <button type="button" data-buy="quarrel">5 Quarrel-4 <b>$3100</b></button>
+          <button type="button" data-buy="longline">6 Longline <b>$4700</b></button>
+          <button type="button" data-buy="hatch">7 Hatch <b>$1800</b></button>
+        </section>
+        <section>
+          <h3>Kit</h3>
+          <button type="button" data-buy="full">8 Vest + Helm <b>$1000</b></button>
+          <button type="button" data-buy="kevlar">Vest <b>$650</b></button>
+          <button type="button" data-buy="kit">9 Breach kit <b>$400</b></button>
+          <button type="button" data-buy="flash">0 Flare <b>$200</b></button>
+          <button type="button" data-buy="smoke">Veil <b>$300</b></button>
+          <button type="button" data-buy="frag">Burst <b>$300</b></button>
+        </section>
+      </div>
+    </div>
+
+    <div id="relock" class="hidden">Click to lock mouse</div>
+
+    <div id="pause" class="hidden">
+      <div class="menu-card">
+        <p class="kicker">MATCH HALTED</p>
+        <h2>Paused</h2>
+        <p class="lede">The clock is frozen. Resume to re-lock the mouse. Quit returns to the title.</p>
+        <button id="btn-resume" type="button">Resume</button>
+        <button id="btn-quit" type="button">Quit to title</button>
+      </div>
+    </div>
+
+    <div id="scoreboard" class="hidden">
+      <table>
+        <thead>
+          <tr><th>Operator</th><th>K</th><th>D</th><th>$</th></tr>
+        </thead>
+        <tbody id="board-body"></tbody>
+      </table>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
