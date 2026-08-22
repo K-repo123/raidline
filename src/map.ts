@@ -25,6 +25,16 @@ export type MapData = {
   labels: { text: string; x: number; y: number; z: number; color: number }[];
 };
 
+/** RAID / LINE spawn lips + mid plug. Closes spawn-to-spawn LOS; sides stay walkable. */
+export function spawnCoverBoxes(): AABB[] {
+  return [
+    box(0, 0, -33, 10, 3.6, 1.2),
+    box(0, 0, 33, 10, 3.6, 1.2),
+    box(0, 0, 14, 5.8, 3.4, 1.1),
+    box(0, 0, -10, 14, 3.2, 1.1),
+  ];
+}
+
 function box(x: number, y: number, z: number, sx: number, sy: number, sz: number): AABB {
   return {
     minX: x - sx / 2,
@@ -155,10 +165,10 @@ export function buildAshpier(): MapData {
   // Mid — two-lane freight cut with a raised spine
   add(box(-6.5, 0, 2, 1.1, 3.6, 22), concrete);
   add(box(6.5, 0, 2, 1.1, 3.6, 22), concrete);
-  add(box(0, 0, -10, 14, 1.4, 1.1), dark);
   add(box(-5.4, 0, 14, 5.2, 2.8, 1.1), dark);
   add(box(5.4, 0, 14, 5.2, 2.8, 1.1), dark);
   add(box(0, 0, 2, 3.2, 0.55, 8), amber);
+  for (const cover of spawnCoverBoxes()) add(cover, cover.maxZ < 0 ? rust : cover.minZ > 20 ? teal : dark);
 
   // A Vault — warm warehouse, readable amber trim
   add(box(-32, 0, 18, 1.1, 4, 20), 0xc4b496);
@@ -245,18 +255,24 @@ export function buildAshpier(): MapData {
   ];
 
   const waypoints: Waypoint[] = [
-    { id: "raid", x: 0, z: -38, links: ["yard", "aAlley", "bAlley"], area: "spawn" },
-    { id: "yard", x: 0, z: -22, links: ["raid", "midIn", "aAlley", "bAlley"], area: "yard" },
+    { id: "raid", x: 0, z: -38, links: ["raidL", "raidR", "aAlley", "bAlley"], area: "spawn" },
+    { id: "raidL", x: -9, z: -32, links: ["raid", "yard", "aAlley"], area: "spawn" },
+    { id: "raidR", x: 9, z: -32, links: ["raid", "yard", "bAlley"], area: "spawn" },
+    { id: "yard", x: 0, z: -22, links: ["raidL", "raidR", "midIn", "aAlley", "bAlley"], area: "yard" },
     { id: "midIn", x: 0, z: -6, links: ["yard", "mid"], area: "mid" },
-    { id: "mid", x: 0, z: 6, links: ["midIn", "midOut"], area: "mid" },
-    { id: "midOut", x: 0, z: 20, links: ["mid", "aDoor", "bDoor", "line"], area: "mid" },
-    { id: "aAlley", x: -22, z: -12, links: ["raid", "yard", "aSite"], area: "a" },
+    { id: "mid", x: 0, z: 6, links: ["midIn", "midL", "midR"], area: "mid" },
+    { id: "midL", x: -9, z: 14, links: ["mid", "midOut", "aDoor"], area: "mid" },
+    { id: "midR", x: 9, z: 14, links: ["mid", "midOut", "bDoor"], area: "mid" },
+    { id: "midOut", x: 0, z: 20, links: ["midL", "midR", "aDoor", "bDoor", "lineL", "lineR"], area: "mid" },
+    { id: "aAlley", x: -22, z: -12, links: ["raid", "raidL", "yard", "aSite"], area: "a" },
     { id: "aSite", x: -23, z: 18, links: ["aAlley", "aDoor"], area: "a" },
-    { id: "aDoor", x: -12, z: 18, links: ["aSite", "midOut"], area: "a" },
-    { id: "bAlley", x: 20, z: -12, links: ["raid", "yard", "bSite"], area: "b" },
+    { id: "aDoor", x: -12, z: 18, links: ["aSite", "midOut", "midL"], area: "a" },
+    { id: "bAlley", x: 20, z: -12, links: ["raid", "raidR", "yard", "bSite"], area: "b" },
     { id: "bSite", x: 24, z: 16, links: ["bAlley", "bDoor"], area: "b" },
-    { id: "bDoor", x: 14, z: 20, links: ["bSite", "midOut"], area: "b" },
-    { id: "line", x: 0, z: 40, links: ["midOut", "aDoor", "bDoor"], area: "spawn" },
+    { id: "bDoor", x: 14, z: 20, links: ["bSite", "midOut", "midR"], area: "b" },
+    { id: "lineL", x: -9, z: 32, links: ["line", "midOut", "aDoor"], area: "spawn" },
+    { id: "lineR", x: 9, z: 32, links: ["line", "midOut", "bDoor"], area: "spawn" },
+    { id: "line", x: 0, z: 40, links: ["lineL", "lineR", "aDoor", "bDoor"], area: "spawn" },
   ];
 
   return {
