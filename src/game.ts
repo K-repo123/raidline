@@ -17,7 +17,7 @@ import {
   segmentHitsBoxes,
   stepMovement,
 } from "./physics";
-import { isMatchPhase, nextBuyOpen, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
+import { isLockAcquireClick, isMatchPhase, nextBuyOpen, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
 import { radarWorldToCanvas, radarYawTip } from "./radar";
 import { isTitleStartKey } from "./titleStart";
 import {
@@ -25,11 +25,13 @@ import {
   WEAPONS,
   applyRecoil,
   cycleTime,
+  PLAYER_HURT_PER_TICK,
   botChipDamage,
   hitDamage,
   makeWeapon,
   soakArmor,
   sprayOffset,
+  takePlayerHurt,
   viewKick,
   type WeaponState,
 } from "./weapons";
@@ -140,9 +142,11 @@ export class Raidline {
   fireHeld = false;
   ignoreFireUntilUp = false;
   pendingLockClick = false;
+  lockButtonDown = false;
   liveElapsed = 0;
   siteHintT = 0;
   hpTicks: { n: number; t: number }[] = [];
+  playerHurtBudget = PLAYER_HURT_PER_TICK;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -241,6 +245,7 @@ export class Raidline {
         this.fireHeld = false;
         this.ignoreFireUntilUp = false;
         this.pendingLockClick = false;
+        this.lockButtonDown = false;
       }
     });
     document.addEventListener("pointermove", (e) => {
@@ -341,16 +346,18 @@ export class Raidline {
       return;
     }
     if (e.button !== 0) return;
-    if (!this.locked || this.ignoreFireUntilUp) {
+    if (isLockAcquireClick(this.locked)) {
       this.buyOpen = false;
       this.hud();
       this.pendingLockClick = true;
+      this.lockButtonDown = true;
       this.ignoreFireUntilUp = true;
       this.fireHeld = false;
       this.mouseDown = false;
       this.requestLock();
       return;
     }
+    if (this.ignoreFireUntilUp) return;
     this.buyOpen = false;
     this.mouseDown = true;
     this.fireHeld = true;
@@ -639,18 +646,13 @@ export class Raidline {
       this.refreshMesh(this.player);
       for (const a of this.actors) {
         if (!a.bot) continue;
-        this.controlBot(a, dt);
-        this.integrate(a, dt);
-        this.stepSound(a, dt);
+        a.vx = a.vz = 0;
+        a.fireHold = false;
+        a.aimT = 0;
         this.refreshMesh(a);
       }
       this.camFrom(this.player);
-      if (this.timer <= 0) {
-        this.phase = "live";
-        this.timer = MATCH.roundTime;
-        this.buyOpen = false;
-        this.hud();
-      }
+      if (this.timer <= 0) this.goLive();
     } else if (this.phase === "live" || this.phase === "planted") {
       this.simulate(dt);
       this.checkRound();
@@ -681,7 +683,27 @@ export class Raidline {
     this.hud();
   }
 
+  goLive(): void {
+    this.phase = "live";
+    this.timer = MATCH.roundTime;
+    this.liveElapsed = 0;
+    this.buyOpen = false;
+    this.playerHurtBudget = PLAYER_HURT_PER_TICK;
+    if (!this.lockButtonDown) {
+      this.ignoreFireUntilUp = false;
+      this.pendingLockClick = false;
+      this.fireHeld = false;
+    }
+    for (const a of this.actors) {
+      if (!a.bot) continue;
+      a.aimT = -0.35 * (a.spawnOffset % 5);
+      a.fireHold = false;
+    }
+    this.hud();
+  }
+
   simulate(dt: number): void {
+    this.playerHurtBudget = PLAYER_HURT_PER_TICK;
     for (const a of this.actors) {
       if (!a.alive) {
         this.refreshMesh(a);
@@ -1102,6 +1124,9 @@ export class Raidline {
     let incoming = soakArmor(target.armor, target.helm, dmg, head);
     if (src.bot && target === this.player) {
       incoming = { hp: botChipDamage(incoming.hp, target.armor > 0), armor: incoming.armor };
+      const capped = takePlayerHurt(this.playerHurtBudget, incoming.hp);
+      this.playerHurtBudget = capped.budget;
+      incoming = { hp: capped.take, armor: incoming.armor };
     }
     target.armor = incoming.armor;
     target.hp -= incoming.hp;

@@ -20,6 +20,11 @@ export function shouldIgnoreLockShot(locked: boolean, ignoreUntilUp: boolean): b
   return !locked || ignoreUntilUp;
 }
 
+/** Once locked, leftover ignore must not be treated as another lock-acquire click. */
+export function isLockAcquireClick(locked: boolean): boolean {
+  return !locked;
+}
+
 export type SiteUse = {
   progressPlant: boolean;
   progressDefuse: boolean;
