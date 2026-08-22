@@ -17,6 +17,7 @@ import {
   segmentHitsBoxes,
   stepMovement,
 } from "./physics";
+import { isMatchPhase, nextBuyOpen, shouldDiscardLook } from "./playControls";
 import { isTitleStartKey } from "./titleStart";
 import {
   GEAR,
@@ -125,6 +126,9 @@ export class Raidline {
   muzzle: THREE.PointLight | null = null;
   bob = 0;
   lockBound = false;
+  paused = false;
+  ignoreLook = 0;
+  fireHeld = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -181,9 +185,14 @@ export class Raidline {
         this.start();
         return;
       }
+      if (this.paused && isTitleStartKey(e.code, e.key)) {
+        e.preventDefault();
+        this.resume();
+        return;
+      }
       this.keys.add(e.code);
-      if (e.code === "KeyB" && this.canBuy()) {
-        this.buyOpen = !this.buyOpen;
+      if (e.code === "KeyB" && !e.repeat) {
+        this.buyOpen = nextBuyOpen(this.buyOpen, this.canBuy(), true);
         this.hud();
       }
       if (e.code === "Tab") {
@@ -191,10 +200,11 @@ export class Raidline {
         this.tabOpen = true;
         this.hud();
       }
-      if (e.code === "Escape") {
-        this.buyOpen = false;
-        this.hud();
+      if (e.code === "Escape" && !e.repeat) {
+        e.preventDefault();
+        this.onEscape();
       }
+      if (this.paused) return;
       if (e.code === "KeyR") this.reload(this.player);
       if (e.code === "Digit1") this.equip(this.player, "primary");
       if (e.code === "Digit2") this.equip(this.player, "pistol");
@@ -210,23 +220,18 @@ export class Raidline {
         this.hud();
       }
     });
-    addEventListener("mousedown", (e) => {
-      if (this.phase === "menu") return;
-      if (!this.locked) this.renderer.domElement.requestPointerLock();
-      if (e.button === 0) this.mouseDown = true;
-      if (e.button === 2) this.scoped = !this.scoped;
+    document.addEventListener("pointerdown", (e) => this.onPointerDown(e));
+    document.addEventListener("pointerup", (e) => {
+      if (e.button === 0) {
+        this.mouseDown = false;
+        this.fireHeld = false;
+      }
     });
-    addEventListener("mouseup", (e) => {
-      if (e.button === 0) this.mouseDown = false;
+    document.addEventListener("pointermove", (e) => {
+      if (this.locked) this.fireHeld = (e.buttons & 1) !== 0;
     });
     addEventListener("contextmenu", (e) => e.preventDefault());
-    addEventListener("mousemove", (e) => {
-      if (!this.locked) return;
-      const sens = 0.0022;
-      this.player.yaw -= e.movementX * sens;
-      this.player.pitch -= e.movementY * sens;
-      this.player.pitch = Math.max(-1.35, Math.min(1.35, this.player.pitch));
-    });
+    document.addEventListener("mousemove", (e) => this.onLook(e));
     const play = el<HTMLButtonElement>("btn-play");
     play.addEventListener("click", (e) => {
       e.preventDefault();
@@ -240,28 +245,129 @@ export class Raidline {
     document.querySelectorAll("[data-buy]").forEach((n) => {
       n.addEventListener("click", () => this.buyItem(this.player, (n as HTMLElement).dataset.buy!));
     });
+    el("btn-resume").addEventListener("click", () => this.resume());
+    el("btn-quit").addEventListener("click", () => this.quitToTitle());
   }
 
   start(): void {
     if (this.phase !== "menu") return;
     this.audio.unlock();
     el("menu").classList.add("hidden");
-    const canvas = this.renderer.domElement;
     if (!this.lockBound) {
       this.lockBound = true;
-      document.addEventListener("pointerlockchange", () => {
-        this.locked = document.pointerLockElement === canvas;
-      });
+      document.addEventListener("pointerlockchange", () => this.onPointerLockChange());
     }
+    this.ignoreLook = 2;
+    this.requestLock();
+    this.beginRound();
+  }
+
+  onPointerLockChange(): void {
+    const canvas = this.renderer.domElement;
+    const now = document.pointerLockElement === canvas;
+    const lost = this.locked && !now;
+    this.locked = now;
+    if (now) this.ignoreLook = 2;
+    if (lost) {
+      this.fireHeld = false;
+      this.mouseDown = false;
+      if (isMatchPhase(this.phase) && !this.paused) this.openPause();
+    }
+    this.hud();
+  }
+
+  requestLock(): void {
+    const canvas = this.renderer.domElement;
+    this.ignoreLook = 2;
     try {
       const lock = canvas.requestPointerLock();
       if (lock && typeof (lock as Promise<void>).catch === "function") {
         void (lock as Promise<void>).catch(() => undefined);
       }
     } catch {
-      /* pointer lock is optional; the round still starts */
+      /* pointer lock is optional */
     }
-    this.beginRound();
+  }
+
+  onLook(e: MouseEvent): void {
+    if (!this.locked || this.paused || this.phase === "menu") return;
+    if (shouldDiscardLook(this.ignoreLook, e.movementX, e.movementY)) {
+      if (this.ignoreLook > 0) this.ignoreLook -= 1;
+      return;
+    }
+    const sens = 0.0022;
+    this.player.yaw -= e.movementX * sens;
+    this.player.pitch -= e.movementY * sens;
+    this.player.pitch = Math.max(-1.35, Math.min(1.35, this.player.pitch));
+  }
+
+  onPointerDown(e: PointerEvent): void {
+    const t = e.target as HTMLElement | null;
+    if (t?.closest("#menu, #pause, #btn-play, #btn-resume, #btn-quit, [data-buy]")) return;
+    if (this.phase === "menu" || this.paused) return;
+    if (t?.closest("#buy")) {
+      return;
+    }
+    if (e.button === 2) {
+      this.scoped = !this.scoped;
+      return;
+    }
+    if (e.button !== 0) return;
+    if (!this.locked) {
+      this.buyOpen = false;
+      this.hud();
+      this.requestLock();
+      return;
+    }
+    this.buyOpen = false;
+    this.mouseDown = true;
+    this.fireHeld = true;
+    e.preventDefault();
+    if (this.phase === "live" || this.phase === "planted") this.tryShoot(this.player);
+  }
+
+  onEscape(): void {
+    if (this.phase === "menu") return;
+    if (this.buyOpen) {
+      this.buyOpen = false;
+      this.hud();
+      return;
+    }
+    if (this.paused) {
+      this.resume();
+      return;
+    }
+    if (isMatchPhase(this.phase)) this.openPause();
+  }
+
+  openPause(): void {
+    if (this.paused || !isMatchPhase(this.phase)) return;
+    this.paused = true;
+    this.buyOpen = false;
+    this.fireHeld = false;
+    this.mouseDown = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.hud();
+  }
+
+  resume(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    this.audio.unlock();
+    this.ignoreLook = 2;
+    this.requestLock();
+    this.hud();
+  }
+
+  quitToTitle(): void {
+    this.paused = false;
+    this.buyOpen = false;
+    this.fireHeld = false;
+    this.mouseDown = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+    el("menu").classList.remove("hidden");
+    this.resetMatch();
+    this.hud();
   }
 
   resetMatch(): void {
@@ -276,6 +382,10 @@ export class Raidline {
     for (const a of this.actors) a.money = MATCH.startMoney;
     this.syncMeshes();
     this.phase = "menu";
+    this.paused = false;
+    this.fireHeld = false;
+    this.mouseDown = false;
+    this.buyOpen = false;
   }
 
   makeActor(name: string, team: Team, bot: boolean, offset: number): Actor {
@@ -373,6 +483,7 @@ export class Raidline {
   }
 
   canBuy(): boolean {
+    if (this.paused) return false;
     if (this.phase !== "freeze" && this.phase !== "live") return false;
     if (this.phase === "live" && this.timer < MATCH.roundTime - MATCH.buyWindow) return false;
     const spawnZ = this.player.team === TEAM.RAID ? this.map.raidSpawn.z : this.map.lineSpawn.z;
@@ -464,6 +575,10 @@ export class Raidline {
       this.orbitMenu(dt);
       return;
     }
+    if (this.paused) {
+      this.hud();
+      return;
+    }
     this.timer -= dt;
     this.flash = Math.max(0, this.flash - dt * 0.65);
     this.hitmark = Math.max(0, this.hitmark - dt * 4);
@@ -479,6 +594,7 @@ export class Raidline {
         this.phase = "live";
         this.timer = MATCH.roundTime;
         this.buyOpen = false;
+        this.hud();
       }
     } else if (this.phase === "live" || this.phase === "planted") {
       this.simulate(dt);
@@ -768,10 +884,14 @@ export class Raidline {
   }
 
   tryShoot(a: Actor): void {
-    const want = a === this.player ? this.mouseDown : a.fireHold;
+    if (this.paused) return;
+    const want = a === this.player ? this.fireHeld || this.mouseDown : a.fireHold;
     if (!want || !a.alive) return;
     if (this.phase === "freeze" || this.phase === "end") return;
-    if (a === this.player && this.buyOpen) return;
+    if (a === this.player && this.buyOpen) {
+      if (!this.locked) return;
+      this.buyOpen = false;
+    }
     const w = this.weapon(a);
     if (w.reloading > 0 || w.cooldown > 0) return;
     if (w.mag <= 0) {
@@ -779,8 +899,10 @@ export class Raidline {
       return;
     }
     if (w.def.mode === "semi" || w.def.mode === "bolt") {
-      if (a === this.player) this.mouseDown = false;
-      else a.fireHold = false;
+      if (a === this.player) {
+        this.mouseDown = false;
+        this.fireHeld = false;
+      } else a.fireHold = false;
     }
     this.fire(a);
   }
@@ -977,7 +1099,7 @@ export class Raidline {
 
   closestVisible(a: Actor): Actor | null {
     let best: Actor | null = null;
-    let bestD = 42;
+    let bestD = 48;
     const eye = this.eye(a);
     for (const o of this.actors) {
       if (!o.alive || o.team === a.team) continue;
@@ -986,7 +1108,8 @@ export class Raidline {
       const to = this.eye(o);
       if (this.inSmoke(a.x, a.z, o.x, o.z)) continue;
       const t = segmentHitsBoxes(eye.x, eye.y, eye.z, to.x, to.y, to.z, this.map.solids);
-      if (t < 0.97) continue;
+      if (d > 12 && t < 0.9) continue;
+      if (d > 6 && t < 0.4) continue;
       bestD = d;
       best = o;
     }
@@ -1071,19 +1194,19 @@ export class Raidline {
 
   buildViewmodel(): void {
     this.viewmodel.clear();
-    const steel = new THREE.MeshStandardMaterial({ color: 0x2a2c2e, metalness: 0.55, roughness: 0.35 });
-    const grip = new THREE.MeshStandardMaterial({ color: 0x3b2a20, roughness: 0.8 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0x5a5e62, metalness: 0.45, roughness: 0.4 });
+    const grip = new THREE.MeshStandardMaterial({ color: 0x4a3428, roughness: 0.8 });
     const accent = new THREE.MeshStandardMaterial({ color: 0xc45a2a, roughness: 0.4, metalness: 0.2 });
-    const rec = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.28), steel);
-    rec.position.set(0.22, -0.16, -0.38);
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.22), steel);
-    bar.position.set(0.22, -0.13, -0.56);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.11, 0.07), grip);
-    mag.position.set(0.22, -0.24, -0.34);
-    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.06), accent);
-    sight.position.set(0.22, -0.1, -0.46);
-    this.muzzle = new THREE.PointLight(0xffcc66, 0, 3, 2);
-    this.muzzle.position.set(0.22, -0.13, -0.72);
+    const rec = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.028, 0.09), steel);
+    rec.position.set(0.085, -0.062, -0.2);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.07), steel);
+    bar.position.set(0.085, -0.052, -0.26);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.034, 0.022), grip);
+    mag.position.set(0.085, -0.086, -0.185);
+    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.01, 0.02), accent);
+    sight.position.set(0.085, -0.044, -0.22);
+    this.muzzle = new THREE.PointLight(0xffcc66, 0, 1.6, 2);
+    this.muzzle.position.set(0.085, -0.052, -0.31);
     this.viewmodel.add(rec, bar, mag, sight, this.muzzle);
     this.camera.add(this.viewmodel);
     this.scene.add(this.camera);
@@ -1095,7 +1218,7 @@ export class Raidline {
     this.bob += spd * 0.018;
     const holster = this.phase === "freeze" ? 0.08 : 0;
     this.viewmodel.position.set(Math.sin(this.bob) * 0.012, Math.abs(Math.sin(this.bob * 2)) * 0.01 - holster, 0);
-    this.viewmodel.rotation.x = a.pitch * 0.04;
+    this.viewmodel.rotation.x = 0;
   }
 
   orbitMenu(dt: number): void {
@@ -1244,12 +1367,14 @@ export class Raidline {
     kf.innerHTML = this.kills.map((k) => `<div class="${k.head ? "hs" : ""}">${escapeHtml(k.text)}</div>`).join("");
     if (this.tabOpen) this.fillBoard();
     el("hint").textContent = this.hint();
-    el("relock").classList.toggle("hidden", this.locked || this.phase === "menu");
+    el("relock").classList.toggle("hidden", this.locked || this.phase === "menu" || this.paused);
+    el("pause").classList.toggle("hidden", !this.paused);
     document.body.dataset.team = p.team === TEAM.RAID ? "raid" : "line";
   }
 
   hint(): string {
-    if (this.phase === "freeze") return "Buy window — B to toggle  ·  1–7 guns  ·  8 vest  ·  9 kit";
+    if (this.paused) return "Paused — Resume to re-lock mouse";
+    if (this.phase === "freeze") return "Buy window — B to close  ·  1–7 guns  ·  8 vest  ·  9 kit";
     if (this.player.hasBomb) return "Carry the charge to A (vault) or B (quay)  ·  hold E to arm";
     if (this.bombArmed && this.player.team !== this.attackTeam) return "Charge is live — hold E to cut it";
     if (this.phase === "end") return "Next round…";
@@ -1257,6 +1382,7 @@ export class Raidline {
   }
 
   phaseLabel(): string {
+    if (this.paused) return "PAUSE";
     if (this.phase === "freeze") return "FREEZE";
     if (this.phase === "planted") return "CHARGE";
     if (this.phase === "end") return "ROUND";

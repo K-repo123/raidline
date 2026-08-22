@@ -156,7 +156,8 @@ export function buildAshpier(): MapData {
   add(box(-6.5, 0, 2, 1.1, 3.6, 22), concrete);
   add(box(6.5, 0, 2, 1.1, 3.6, 22), concrete);
   add(box(0, 0, -10, 14, 1.4, 1.1), dark);
-  add(box(0, 0, 14, 14, 2.8, 1.1), dark);
+  add(box(-5.4, 0, 14, 5.2, 2.8, 1.1), dark);
+  add(box(5.4, 0, 14, 5.2, 2.8, 1.1), dark);
   add(box(0, 0, 2, 3.2, 0.55, 8), amber);
 
   // A Vault — warm warehouse, readable amber trim
