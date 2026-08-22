@@ -1,3 +1,5 @@
+import { GEAR, WEAPONS } from "./weapons";
+
 /** B always closes an open Supply panel; it only opens when buying is allowed. */
 export function nextBuyOpen(open: boolean, canBuy: boolean, pressedB: boolean): boolean {
   if (!pressedB) return open;
@@ -57,4 +59,20 @@ export function siteUseState(opts: {
     showBar: progressPlant || progressDefuse,
     offSiteHint,
   };
+}
+
+export function buyPrice(id: string): number {
+  if (WEAPONS[id]) return WEAPONS[id].price;
+  const gear = Object.values(GEAR).find((g) => g.id === id);
+  return gear?.price ?? Number.POSITIVE_INFINITY;
+}
+
+export function buyAffordable(id: string, money: number): boolean {
+  return money >= buyPrice(id);
+}
+
+export function teamFragScore(actors: { team: number; kills: number }[], team: number): number {
+  let n = 0;
+  for (const a of actors) if (a.team === team) n += a.kills;
+  return n;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isLockAcquireClick, isMatchPhase, nextBuyOpen, playerSpawnProtected, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
+import { buyAffordable, isLockAcquireClick, isMatchPhase, nextBuyOpen, playerSpawnProtected, shouldDiscardLook, shouldIgnoreLockShot, siteUseState, teamFragScore } from "./playControls";
 
 describe("buy toggle", () => {
   it("B closes Supply even when the buy window has ended", () => {
@@ -88,5 +88,27 @@ describe("site use", () => {
       defending: true,
     });
     assert.equal(tap.offSiteHint, true);
+  });
+});
+
+describe("buy affordability", () => {
+  it("greys rifles on an $800 open and keeps Anvil affordable", () => {
+    assert.equal(buyAffordable("anvil", 800), true);
+    assert.equal(buyAffordable("ridge", 800), false);
+    assert.equal(buyAffordable("full", 800), false);
+    assert.equal(buyAffordable("flash", 800), true);
+  });
+});
+
+describe("frag score", () => {
+  it("moves the RAID/LINE totals when someone gets a kill", () => {
+    const actors = [
+      { team: 0, kills: 0 },
+      { team: 1, kills: 0 },
+    ];
+    assert.equal(teamFragScore(actors, 0), 0);
+    actors[0].kills = 1;
+    assert.equal(teamFragScore(actors, 0), 1);
+    assert.equal(teamFragScore(actors, 1), 0);
   });
 });

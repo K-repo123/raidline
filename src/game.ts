@@ -17,7 +17,7 @@ import {
   segmentHitsBoxes,
   stepMovement,
 } from "./physics";
-import { isLockAcquireClick, isMatchPhase, nextBuyOpen, playerSpawnProtected, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
+import { buyAffordable, isLockAcquireClick, isMatchPhase, nextBuyOpen, playerSpawnProtected, shouldDiscardLook, shouldIgnoreLockShot, siteUseState, teamFragScore } from "./playControls";
 import { radarWorldToCanvas, radarYawTip } from "./radar";
 import { isTitleStartKey } from "./titleStart";
 import {
@@ -151,6 +151,7 @@ export class Raidline {
   playerHurtSecondBudget = PLAYER_HURT_PER_SECOND;
   playerHurtSecondT = 0;
   spawnProtT = 0;
+  gunPunch = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -800,7 +801,7 @@ export class Raidline {
     } else if (enemy && a.hp < 28) {
       tx = a.x - Math.sin(a.yaw) * 4;
       tz = a.z - Math.cos(a.yaw) * 4;
-    } else if (enemy) {
+    } else if (enemy && this.liveElapsed >= MATCH.spawnProt) {
       tx = enemy.x;
       tz = enemy.z;
     } else {
@@ -833,8 +834,8 @@ export class Raidline {
       while (aim > Math.PI) aim -= Math.PI * 2;
       while (aim < -Math.PI) aim += Math.PI * 2;
       const vsPlayer = enemy === this.player;
-      const allowBotFight = vsPlayer || this.liveElapsed >= MATCH.minWipeTime;
-      a.fireHold = allowBotFight && a.aimT > 0.55 && Math.abs(aim) < 0.28;
+      const allowBotFight = (vsPlayer || this.liveElapsed >= MATCH.minWipeTime) && !this.spawnProtected();
+      a.fireHold = allowBotFight && a.aimT > 0.28 && Math.abs(aim) < 0.38;
     } else {
       a.aimT = 0;
       a.pitch *= 1 - dt * 3;
@@ -857,8 +858,26 @@ export class Raidline {
     a.vz = next.vz;
     a.vy = next.vy;
     if (a.team !== this.player.team && this.player.alive && !fight) {
-      a.vx *= 1.28;
-      a.vz *= 1.28;
+      a.vx *= 1.36;
+      a.vz *= 1.36;
+    }
+    if (!fight && dist > 1.1 && groundSpeed(a.vx, a.vz) < 0.35) {
+      const here = nearestWaypoint(this.map.waypoints, a.x, a.z);
+      const alt = waypointById(this.map.waypoints, here.links[a.id % Math.max(1, here.links.length)] ?? here.id);
+      tx = alt.x;
+      tz = alt.z;
+      const turn = Math.atan2(tx - a.x, tz - a.z);
+      a.yaw = this.turn(a.yaw, turn, dt * 5);
+      const push = stepMovement(a.vx, a.vz, a.vy, {
+        forward: 1,
+        right: 0,
+        jump: false,
+        walk: false,
+        crouch: false,
+        onGround: a.onGround,
+      }, a.yaw, dt);
+      a.vx = push.vx * 1.2;
+      a.vz = push.vz * 1.2;
     }
 
     if (!this.bombArmed && this.bombMesh && a.team === this.attackTeam && !a.hasBomb) {
@@ -882,9 +901,12 @@ export class Raidline {
     if (a.hasBomb) return a.id % 2 === 0 ? "aSite" : "bSite";
     if (this.bombArmed && this.bombSite) return this.bombSite.id === "A" ? "aSite" : "bSite";
     if (a.team !== this.player.team && this.player.alive) {
+      if (this.liveElapsed < MATCH.spawnProt) {
+        return a.id % 3 === 0 ? "aDoor" : a.id % 3 === 1 ? "bDoor" : "cutL";
+      }
       return nearestWaypoint(this.map.waypoints, this.player.x, this.player.z).id;
     }
-    return a.id % 2 === 0 ? "mid" : "aSite";
+    return a.id % 2 === 0 ? "cutL" : "aSite";
   }
 
   stepToward(from: Waypoint, goalId: string): Waypoint {
@@ -1076,8 +1098,9 @@ export class Raidline {
       a.pitch += kick.pitch;
       a.yaw += kick.yaw;
       a.pitch = Math.max(-1.35, Math.min(1.35, a.pitch));
-      this.muzzleT = 0.12;
-      if (this.muzzle) this.muzzle.intensity = 28;
+      this.muzzleT = 0.16;
+      this.gunPunch = 1;
+      if (this.muzzle) this.muzzle.intensity = 36;
     }
   }
 
@@ -1103,7 +1126,7 @@ export class Raidline {
       }
     }
     const end = origin.clone().addScaledVector(dir, reach * bestT);
-    this.flashTracer(origin, end);
+    this.flashTracer(origin, end, a === this.player);
     if (hit) {
       if (a.bot && Math.random() > 0.1) head = false;
       const dist = origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z));
@@ -1262,7 +1285,7 @@ export class Raidline {
 
   closestVisible(a: Actor): Actor | null {
     let best: Actor | null = null;
-    let bestD = 64;
+    let bestD = 78;
     const eye = this.eye(a);
     for (const o of this.actors) {
       if (!o.alive || o.team === a.team) continue;
@@ -1390,9 +1413,14 @@ export class Raidline {
     const holster = this.phase === "freeze" ? 0.08 : 0;
     const rel = w.reloading > 0 ? 1 - w.reloading / w.def.reload : 0;
     const dip = w.reloading > 0 ? 0.08 + Math.sin(rel * Math.PI) * 0.05 : 0;
-    this.viewmodel.position.set(Math.sin(this.bob) * 0.012, Math.abs(Math.sin(this.bob * 2)) * 0.01 - holster - dip, 0);
-    this.viewmodel.rotation.x = w.reloading > 0 ? 0.72 + Math.sin(rel * 14) * 0.16 : 0;
-    this.viewmodel.rotation.z = w.reloading > 0 ? Math.sin(rel * 10) * 0.28 : 0;
+    const punch = this.gunPunch;
+    this.viewmodel.position.set(
+      Math.sin(this.bob) * 0.012 + punch * 0.006,
+      Math.abs(Math.sin(this.bob * 2)) * 0.01 - holster - dip - punch * 0.028,
+      punch * 0.04,
+    );
+    this.viewmodel.rotation.x = (w.reloading > 0 ? 0.72 + Math.sin(rel * 14) * 0.16 : 0) - punch * 0.24;
+    this.viewmodel.rotation.z = (w.reloading > 0 ? Math.sin(rel * 10) * 0.28 : 0) + punch * 0.1;
   }
 
   orbitMenu(dt: number): void {
@@ -1452,20 +1480,35 @@ export class Raidline {
     g.scale.y = a.crouch ? 0.7 : 1;
   }
 
-  flashTracer(from: THREE.Vector3, to: THREE.Vector3): void {
+  flashTracer(from: THREE.Vector3, to: THREE.Vector3, firstPerson = false): void {
     const dir = to.clone().sub(from);
     const len = Math.max(0.35, dir.length());
     dir.normalize();
-    const start = from.clone().addScaledVector(dir, 0.55);
+    const start = from.clone().addScaledVector(dir, firstPerson ? 1.35 : 0.55);
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.2, len),
+      new THREE.BoxGeometry(firstPerson ? 0.06 : 0.2, firstPerson ? 0.06 : 0.2, len),
       new THREE.MeshBasicMaterial({ color: 0xfff6c4, transparent: true, opacity: 1, depthTest: false }),
     );
     mesh.position.copy(start).lerp(to, 0.5);
     mesh.lookAt(to);
     mesh.renderOrder = 8;
     this.scene.add(mesh);
-    this.tracers.push({ mesh, t: 0.12 });
+    this.tracers.push({ mesh, t: firstPerson ? 0.16 : 0.12 });
+    if (firstPerson) {
+      const gunX = innerWidth * 0.5 + 78;
+      const gunY = innerHeight * 0.5 + 96;
+      const hit = this.project2(to);
+      this.screenFx.push({
+        x0: gunX,
+        y0: gunY,
+        x1: hit?.x ?? innerWidth * 0.5,
+        y1: hit?.y ?? innerHeight * 0.18,
+        t: 0.16,
+        muzzle: false,
+      });
+      this.screenFx.push({ x0: gunX, y0: gunY, x1: gunX, y1: gunY, t: 0.14, muzzle: true });
+      return;
+    }
     const a = this.project2(start);
     const b = this.project2(to);
     if (a && b) this.screenFx.push({ x0: a.x, y0: a.y, x1: b.x, y1: b.y, t: 0.12, muzzle: false });
@@ -1503,7 +1546,8 @@ export class Raidline {
 
   tickFx(dt: number): void {
     this.muzzleT = Math.max(0, this.muzzleT - dt);
-    if (this.muzzle) this.muzzle.intensity = this.muzzleT > 0 ? 28 * (this.muzzleT / 0.12) : 0;
+    this.gunPunch = Math.max(0, this.gunPunch - dt * 7);
+    if (this.muzzle) this.muzzle.intensity = this.muzzleT > 0 ? 36 * (this.muzzleT / 0.16) : 0;
     if (this.muzzleSprite) {
       const mat = this.muzzleSprite.material as THREE.MeshBasicMaterial;
       mat.opacity = this.muzzleT > 0 ? Math.min(1, this.muzzleT / 0.04) : 0;
@@ -1637,8 +1681,8 @@ export class Raidline {
     el("ammo").textContent = !p.alive ? "—" : w.reloading > 0 ? "REL" : `${w.mag} / ${w.reserve}`;
     el("gun").textContent = !p.alive ? "SPECTATE" : w.reloading > 0 ? "RELOAD" : w.def.name;
     el("money").textContent = `$${p.money}`;
-    el("score-raid").textContent = String(this.score[0]);
-    el("score-line").textContent = String(this.score[1]);
+    el("score-raid").textContent = String(teamFragScore(this.actors, TEAM.RAID));
+    el("score-line").textContent = String(teamFragScore(this.actors, TEAM.LINE));
     const showT = this.phase === "planted" ? this.bombT : this.timer;
     el("clock").textContent = this.fmt(Math.max(0, showT));
     el("phase").textContent = this.phaseLabel();
@@ -1647,6 +1691,9 @@ export class Raidline {
     el("bomb-icon").classList.toggle("hidden", !p.hasBomb && !this.bombArmed);
     el("bomb-icon").textContent = p.hasBomb ? "CHARGE" : this.bombArmed ? `LIVE ${this.bombSite?.id ?? ""}` : "";
     el("buy").classList.toggle("hidden", !this.buyOpen);
+    document.querySelectorAll<HTMLButtonElement>("[data-buy]").forEach((n) => {
+      n.classList.toggle("cant", !buyAffordable(n.dataset.buy ?? "", p.money));
+    });
     el("scoreboard").classList.toggle("hidden", !this.tabOpen);
     el("crosshair").classList.toggle("scoped", this.scoped);
     const gap = 6 + groundSpeed(p.vx, p.vz) * 3 + w.recoil * 40;
@@ -1704,8 +1751,8 @@ export class Raidline {
     if (this.paused) return "PAUSE";
     if (this.phase === "freeze") return "FREEZE";
     if (this.phase === "planted") return "CHARGE";
-    if (this.phase === "end") return "ROUND";
-    return `R${this.round}`;
+    if (this.phase === "end") return `ROUND  ${this.score[0]}-${this.score[1]}`;
+    return `R${this.round}  ${this.score[0]}-${this.score[1]}`;
   }
 
   fmt(t: number): string {

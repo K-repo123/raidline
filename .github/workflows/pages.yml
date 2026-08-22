@@ -2,7 +2,7 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [main, cursor/raidline-cs-feel-pages-df5b, cursor/fix-title-start-51a8, cursor/fix-strafe-sign-51a8, cursor/fix-play-bugs-51a8, cursor/cs-feel-combat-51a8, cursor/cs-feel-radar-fx-51a8, cursor/cs-feel-lock-hurt-51a8, cursor/fix-live-hp-51a8, cursor/fix-spawn-prot-51a8, cursor/fix-spawn-los-51a8]
+    branches: [main, cursor/raidline-cs-feel-pages-df5b, cursor/fix-title-start-51a8, cursor/fix-strafe-sign-51a8, cursor/fix-play-bugs-51a8, cursor/cs-feel-combat-51a8, cursor/cs-feel-radar-fx-51a8, cursor/cs-feel-lock-hurt-51a8, cursor/fix-live-hp-51a8, cursor/fix-spawn-prot-51a8, cursor/fix-spawn-los-51a8, cursor/fix-bot-hunt-51a8]
   workflow_dispatch:
 
 permissions:
