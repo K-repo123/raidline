@@ -21,6 +21,16 @@ describe("movement", () => {
     assert.ok(Math.abs(out.z - 1) < 1e-9);
   });
 
+  it("strafe right matches Three.js camera-right (not world +X)", () => {
+    const out = { x: 0, z: 0 };
+    wishDirection(0, 0, 1, out);
+    assert.ok(Math.abs(out.x - -1) < 1e-9, "D at yaw 0 must move -X (view right)");
+    assert.ok(Math.abs(out.z) < 1e-9);
+    wishDirection(0, 0, -1, out);
+    assert.ok(Math.abs(out.x - 1) < 1e-9, "A at yaw 0 must move +X (view left)");
+    assert.ok(Math.abs(out.z) < 1e-9);
+  });
+
   it("circle resolves out of an AABB", () => {
     const boxes = [{ minX: -1, maxX: 1, minY: 0, maxY: 2, minZ: -1, maxZ: 1, solid: true }];
     const p = collideCircleBoxes(0.9, 0, 0.4, boxes);

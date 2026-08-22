@@ -18,8 +18,10 @@ export function wishDirection(
 ): number {
   const s = Math.sin(yaw);
   const c = Math.cos(yaw);
-  out.x = forward * s + right * c;
-  out.z = forward * c - right * s;
+  // Forward matches look dir (sin, 0, cos). Right matches Three.js camera +X
+  // after lookAt: (-cos, 0, sin). The old +right*c / -right*s sign was inverted.
+  out.x = forward * s - right * c;
+  out.z = forward * c + right * s;
   const mag = Math.hypot(out.x, out.z);
   if (mag > 1e-6) {
     out.x /= mag;
