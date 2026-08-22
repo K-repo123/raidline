@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isLockAcquireClick, isMatchPhase, nextBuyOpen, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
+import { isLockAcquireClick, isMatchPhase, nextBuyOpen, playerSpawnProtected, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
 
 describe("buy toggle", () => {
   it("B closes Supply even when the buy window has ended", () => {
@@ -41,13 +41,23 @@ describe("pointer-lock fire", () => {
   });
 });
 
+describe("spawn protection", () => {
+  it("covers freeze and the first 3s of live, not 3.0 exactly", () => {
+    assert.equal(playerSpawnProtected("freeze", 0, 3), true);
+    assert.equal(playerSpawnProtected("live", 0, 3), true);
+    assert.equal(playerSpawnProtected("live", 2.99, 3), true);
+    assert.equal(playerSpawnProtected("live", 3, 3), false);
+    assert.equal(playerSpawnProtected("planted", 1, 3), false);
+  });
+});
+
 describe("site use", () => {
   it("only progresses plant/defuse inside the trigger", () => {
     const off = siteUseState({
       holdingE: true,
       onSite: false,
       nearBomb: false,
-      hasBomb: true,
+      hasBomb: false,
       bombArmed: false,
       defending: false,
     });
@@ -66,5 +76,17 @@ describe("site use", () => {
     assert.equal(on.progressPlant, true);
     assert.equal(on.showBar, true);
     assert.equal(on.offSiteHint, false);
+  });
+
+  it("treats a tap of E off-site as a hint even without the charge", () => {
+    const tap = siteUseState({
+      holdingE: true,
+      onSite: false,
+      nearBomb: false,
+      hasBomb: false,
+      bombArmed: false,
+      defending: true,
+    });
+    assert.equal(tap.offSiteHint, true);
   });
 });

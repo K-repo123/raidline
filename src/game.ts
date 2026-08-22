@@ -17,7 +17,7 @@ import {
   segmentHitsBoxes,
   stepMovement,
 } from "./physics";
-import { isLockAcquireClick, isMatchPhase, nextBuyOpen, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
+import { isLockAcquireClick, isMatchPhase, nextBuyOpen, playerSpawnProtected, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
 import { radarWorldToCanvas, radarYawTip } from "./radar";
 import { isTitleStartKey } from "./titleStart";
 import {
@@ -227,6 +227,7 @@ export class Raidline {
         this.onEscape();
       }
       if (this.paused) return;
+      if (e.code === "KeyE" && !e.repeat) this.onUseTap();
       if (e.code === "KeyR") this.reload(this.player);
       if (e.code === "Digit1") this.equip(this.player, "primary");
       if (e.code === "Digit2") this.equip(this.player, "pistol");
@@ -350,6 +351,7 @@ export class Raidline {
       return;
     }
     if (e.button !== 0) return;
+    if (!this.player.alive && isMatchPhase(this.phase)) return;
     if (isLockAcquireClick(this.locked)) {
       this.buyOpen = false;
       this.hud();
@@ -637,8 +639,6 @@ export class Raidline {
       return;
     }
     this.timer -= dt;
-    if (this.phase === "live" || this.phase === "planted") this.liveElapsed += dt;
-    this.spawnProtT = Math.max(0, this.spawnProtT - dt);
     this.playerHurtSecondT += dt;
     if (this.playerHurtSecondT >= 1) {
       this.playerHurtSecondT = 0;
@@ -670,6 +670,8 @@ export class Raidline {
       if (this.timer <= 0) this.goLive();
     } else if (this.phase === "live" || this.phase === "planted") {
       this.simulate(dt);
+      this.liveElapsed += dt;
+      this.spawnProtT = Math.max(0, MATCH.spawnProt - this.liveElapsed);
       this.checkRound();
       if (this.phase === "planted") {
         this.bombT -= dt;
@@ -936,6 +938,26 @@ export class Raidline {
     a.z = Math.max(-46, Math.min(48, a.z));
   }
 
+  spawnProtected(): boolean {
+    return playerSpawnProtected(this.phase, this.liveElapsed, MATCH.spawnProt);
+  }
+
+  onUseTap(): void {
+    if (!this.player.alive || this.phase === "end") return;
+    const site = siteAt(this.map.sites, this.player.x, this.player.z);
+    const nearBomb = this.bombArmed && Math.hypot(this.player.x - this.bombX, this.player.z - this.bombZ) < 1.5;
+    const use = siteUseState({
+      holdingE: true,
+      onSite: !!site,
+      nearBomb,
+      hasBomb: this.player.hasBomb,
+      bombArmed: this.bombArmed,
+      defending: this.player.team !== this.attackTeam,
+    });
+    if (use.offSiteHint) this.siteHintT = 1.8;
+    this.hud();
+  }
+
   useHold(dt: number): void {
     if (!this.player.alive || this.phase === "end" || this.phase === "freeze") return;
     const holding = this.keys.has("KeyE");
@@ -1004,6 +1026,7 @@ export class Raidline {
     if (!want || !a.alive) return;
     if (this.phase === "freeze" || this.phase === "end") return;
     if (a.bot && this.liveElapsed < MATCH.botFireDelay) return;
+    if (a.bot && this.spawnProtected()) return;
     if (a === this.player && this.buyOpen) {
       if (!this.locked) return;
       this.buyOpen = false;
@@ -1138,7 +1161,7 @@ export class Raidline {
 
   hurt(target: Actor, dmg: number, src: Actor, head: boolean): void {
     if (!target.alive) return;
-    if (target === this.player && (this.phase === "freeze" || this.spawnProtT > 0)) return;
+    if (target === this.player && this.spawnProtected()) return;
     if (src.bot && target.bot && this.liveElapsed < MATCH.minWipeTime) return;
     let incoming = soakArmor(target.armor, target.helm, dmg, head);
     if (src.bot && target === this.player) {
@@ -1249,8 +1272,7 @@ export class Raidline {
       const to = this.eye(o);
       if (this.inSmoke(a.x, a.z, o.x, o.z)) continue;
       const t = segmentHitsBoxes(eye.x, eye.y, eye.z, to.x, to.y, to.z, this.map.solids);
-      if (d > 16 && t < 0.88) continue;
-      if (d > 8 && t < 0.45) continue;
+      if (t < 0.99) continue;
       bestD = d;
       best = o;
     }
@@ -1361,7 +1383,7 @@ export class Raidline {
   }
 
   updateViewmodel(a: Actor): void {
-    this.viewmodel.visible = this.phase !== "menu";
+    this.viewmodel.visible = this.phase !== "menu" && a.alive;
     const spd = groundSpeed(a.vx, a.vz);
     this.bob += spd * 0.018;
     const w = this.weapon(a);
@@ -1612,16 +1634,16 @@ export class Raidline {
     const w = this.weapon(p);
     el("hp").textContent = String(Math.max(0, Math.ceil(p.hp)));
     el("armor").textContent = String(Math.ceil(p.armor));
-    el("ammo").textContent = w.reloading > 0 ? "REL" : `${w.mag} / ${w.reserve}`;
-    el("gun").textContent = w.reloading > 0 ? "RELOAD" : w.def.name;
+    el("ammo").textContent = !p.alive ? "—" : w.reloading > 0 ? "REL" : `${w.mag} / ${w.reserve}`;
+    el("gun").textContent = !p.alive ? "SPECTATE" : w.reloading > 0 ? "RELOAD" : w.def.name;
     el("money").textContent = `$${p.money}`;
     el("score-raid").textContent = String(this.score[0]);
     el("score-line").textContent = String(this.score[1]);
     const showT = this.phase === "planted" ? this.bombT : this.timer;
     el("clock").textContent = this.fmt(Math.max(0, showT));
     el("phase").textContent = this.phaseLabel();
-    const protOn = this.phase === "freeze" || (this.phase === "live" && this.spawnProtT > 0);
-    el("spawn-prot").classList.toggle("hidden", !protOn);
+    el("spawn-prot").classList.toggle("hidden", !this.spawnProtected());
+    el("dead").classList.toggle("hidden", this.player.alive || this.phase === "menu");
     el("bomb-icon").classList.toggle("hidden", !p.hasBomb && !this.bombArmed);
     el("bomb-icon").textContent = p.hasBomb ? "CHARGE" : this.bombArmed ? `LIVE ${this.bombSite?.id ?? ""}` : "";
     el("buy").classList.toggle("hidden", !this.buyOpen);
@@ -1659,14 +1681,16 @@ export class Raidline {
     kf.innerHTML = this.kills.map((k) => `<div class="${k.head ? "hs" : ""}">${escapeHtml(k.text)}</div>`).join("");
     if (this.tabOpen) this.fillBoard();
     el("hint").textContent = this.hint();
-    el("relock").classList.toggle("hidden", this.locked || this.phase === "menu" || this.paused);
+    el("crosshair").classList.toggle("hidden", !p.alive);
+    el("relock").classList.toggle("hidden", this.locked || this.phase === "menu" || this.paused || !p.alive);
     el("pause").classList.toggle("hidden", !this.paused);
     document.body.dataset.team = p.team === TEAM.RAID ? "raid" : "line";
   }
 
   hint(): string {
     if (this.paused) return "Paused — Resume to re-lock mouse";
-    if (this.siteHintT > 0) return "Get to A Vault or B Quay — hold E on the pad";
+    if (!this.player.alive) return "You are down — spectating";
+    if (this.siteHintT > 0) return "Get to A Vault or B Quay";
     if (this.phase === "freeze") return "Buy window — B to close  ·  walk is live  ·  1–7 guns";
     const site = siteAt(this.map.sites, this.player.x, this.player.z);
     if (this.player.hasBomb && site) return `On ${site.id === "A" ? "A Vault" : "B Quay"} — hold E to arm the charge`;

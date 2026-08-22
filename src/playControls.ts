@@ -15,6 +15,13 @@ export function isMatchPhase(phase: string): boolean {
   return phase === "freeze" || phase === "live" || phase === "planted" || phase === "end";
 }
 
+/** True for the whole freeze and until liveElapsed reaches spawnProt seconds. */
+export function playerSpawnProtected(phase: string, liveElapsed: number, spawnProt: number): boolean {
+  if (phase === "freeze") return true;
+  if (phase === "live" && liveElapsed < spawnProt) return true;
+  return false;
+}
+
 /** CS does not shoot on the click that captures the mouse. */
 export function shouldIgnoreLockShot(locked: boolean, ignoreUntilUp: boolean): boolean {
   return !locked || ignoreUntilUp;
@@ -43,8 +50,7 @@ export function siteUseState(opts: {
 }): SiteUse {
   const progressPlant = opts.holdingE && opts.hasBomb && opts.onSite && !opts.bombArmed;
   const progressDefuse = opts.holdingE && opts.bombArmed && opts.defending && opts.nearBomb;
-  const offSiteHint =
-    opts.holdingE && !progressPlant && !progressDefuse && (opts.hasBomb || (opts.bombArmed && opts.defending));
+  const offSiteHint = opts.holdingE && !progressPlant && !progressDefuse;
   return {
     progressPlant,
     progressDefuse,

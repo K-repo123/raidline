@@ -516,6 +516,22 @@ h1 {
   font-family: "IBM Plex Mono", monospace;
 }
 
+#dead {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, rgba(28, 8, 10, 0.55), rgba(10, 6, 8, 0.82));
+  z-index: 18;
+  pointer-events: none;
+}
+
+#dead h2 {
+  letter-spacing: 0.16em;
+  margin: 0 0 12px;
+  color: #ff8a8a;
+}
+
 #pause {
   position: fixed;
   inset: 0;
