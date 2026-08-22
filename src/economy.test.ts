@@ -100,9 +100,12 @@ describe("economy and weapons", () => {
   });
 
   it("names stay original", () => {
-    const banned = /ak-?47|m4a1|awp|desert eagle|glock|usp|mp9|dust2|inferno|mirage|counter-?strike/i;
+    const banned = /ak-?47|m4a1|awp|desert eagle|glock|usp|mp9|dust2|inferno|mirage|counter-?strike|karambit|bayonet|butterfly/i;
     for (const w of Object.values(WEAPONS)) {
       assert.equal(banned.test(w.name), false, w.name);
     }
+    assert.equal(WEAPONS.bit.name, "Bit");
+    assert.equal(WEAPONS.bit.category, "melee");
+    assert.equal(WEAPONS.bit.range, 2.1);
   });
 });

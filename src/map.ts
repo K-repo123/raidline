@@ -319,3 +319,9 @@ export function nearestWaypoint(points: Waypoint[], x: number, z: number): Waypo
 export function waypointById(points: Waypoint[], id: string): Waypoint {
   return points.find((p) => p.id === id) ?? points[0];
 }
+
+/** LINE hunters peek mid/A instead of pathing into the RAID box. */
+export function huntPeekGoal(playerZ: number, botId: number): string | null {
+  if (playerZ >= -18) return null;
+  return botId % 3 === 0 ? "cutL" : botId % 3 === 1 ? "cutR" : "aAlley";
+}

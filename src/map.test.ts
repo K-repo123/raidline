@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ashpierWaypoints, spawnCoverBoxes, waypointById } from "./map";
+import { ashpierWaypoints, huntPeekGoal, spawnCoverBoxes, waypointById } from "./map";
 import { segmentHitsBoxes } from "./physics";
 
 describe("spawn cover", () => {
@@ -44,6 +44,43 @@ describe("spawn cover", () => {
     }
     assert.ok(prev.has("raid"), "no path from line to raid");
     const hops: string[] = ["raid"];
+    while (hops[0] !== "line") hops.unshift(prev.get(hops[0])!);
+    for (let i = 0; i < hops.length - 1; i++) {
+      const a = waypointById(pts, hops[i]);
+      const b = waypointById(pts, hops[i + 1]);
+      const t = segmentHitsBoxes(a.x, 1.0, a.z, b.x, 1.0, b.z, cover);
+      assert.ok(t >= 0.99, `${a.id}→${b.id} hits cover t=${t}`);
+    }
+  });
+});
+
+describe("hunt peek", () => {
+  it("sends hunters to mid cuts instead of the RAID box", () => {
+    assert.equal(huntPeekGoal(-31, 6), "cutL");
+    assert.equal(huntPeekGoal(-31, 7), "cutR");
+    assert.equal(huntPeekGoal(-31, 8), "aAlley");
+    assert.equal(huntPeekGoal(-38, 6), "cutL");
+    assert.equal(huntPeekGoal(0, 6), null);
+    assert.notEqual(huntPeekGoal(-31, 6), "raid");
+  });
+
+  it("keeps the LINE-to-cutL peek path off cover", () => {
+    const pts = ashpierWaypoints();
+    const cover = spawnCoverBoxes();
+    const q = ["line"];
+    const prev = new Map<string, string>([["line", "line"]]);
+    while (q.length) {
+      const id = q.shift()!;
+      if (id === "cutL") break;
+      for (const n of waypointById(pts, id).links) {
+        if (!prev.has(n)) {
+          prev.set(n, id);
+          q.push(n);
+        }
+      }
+    }
+    assert.ok(prev.has("cutL"), "no path from line to cutL");
+    const hops: string[] = ["cutL"];
     while (hops[0] !== "line") hops.unshift(prev.get(hops[0])!);
     for (let i = 0; i < hops.length - 1; i++) {
       const a = waypointById(pts, hops[i]);

@@ -3,6 +3,7 @@ import { AudioEngine } from "./audio";
 import { COLORS, MATCH, MOVE, TEAM, type Team } from "./config";
 import {
   buildAshpier,
+  huntPeekGoal,
   nearestWaypoint,
   siteAt,
   waypointById,
@@ -15,6 +16,8 @@ import {
   groundSpeed,
   moveInaccuracy,
   segmentHitsBoxes,
+  shotCone,
+  stillForFirstShot,
   stepMovement,
 } from "./physics";
 import { buyAffordable, isLockAcquireClick, isMatchPhase, nextBuyOpen, playerSpawnProtected, shouldDiscardLook, shouldIgnoreLockShot, siteUseState, teamFragScore } from "./playControls";
@@ -64,7 +67,8 @@ export type Actor = {
   frags: number;
   primary: WeaponState | null;
   pistol: WeaponState;
-  active: "primary" | "pistol";
+  melee: WeaponState;
+  active: "primary" | "pistol" | "melee";
   hasBomb: boolean;
   loss: number;
   kills: number;
@@ -132,6 +136,8 @@ export class Raidline {
   impacts: { mesh: THREE.Mesh; t: number }[] = [];
   screenFx: { x0: number; y0: number; x1: number; y1: number; t: number; muzzle: boolean }[] = [];
   viewmodel = new THREE.Group();
+  gunRoot = new THREE.Group();
+  knifeRoot = new THREE.Group();
   muzzle: THREE.PointLight | null = null;
   muzzleSprite: THREE.Mesh | null = null;
   muzzleT = 0;
@@ -152,6 +158,7 @@ export class Raidline {
   playerHurtSecondT = 0;
   spawnProtT = 0;
   gunPunch = 0;
+  lastArmed: "primary" | "pistol" | "melee" = "pistol";
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -230,8 +237,10 @@ export class Raidline {
       if (this.paused) return;
       if (e.code === "KeyE" && !e.repeat) this.onUseTap();
       if (e.code === "KeyR") this.reload(this.player);
-      if (e.code === "Digit1") this.equip(this.player, "primary");
+      if (e.code === "Digit1") this.equip(this.player, this.player.primary ? "primary" : "melee");
       if (e.code === "Digit2") this.equip(this.player, "pistol");
+      if (e.code === "Digit3") this.equip(this.player, "melee");
+      if (e.code === "KeyQ") this.equip(this.player, this.lastArmed);
       if (e.code === "KeyF") this.throwNade(this.player, "flash");
       if (e.code === "KeyC") this.throwNade(this.player, "smoke");
       if (e.code === "KeyV") this.throwNade(this.player, "frag");
@@ -462,6 +471,7 @@ export class Raidline {
       frags: 0,
       primary: null,
       pistol: makeWeapon("dart"),
+      melee: makeWeapon("bit"),
       active: "pistol",
       hasBomb: false,
       loss: 0,
@@ -476,11 +486,14 @@ export class Raidline {
   }
 
   weapon(a: Actor): WeaponState {
-    return a.active === "primary" && a.primary ? a.primary : a.pistol;
+    if (a.active === "melee") return a.melee;
+    if (a.active === "primary" && a.primary) return a.primary;
+    return a.pistol;
   }
 
-  equip(a: Actor, slot: "primary" | "pistol"): void {
-    if (slot === "primary" && !a.primary) return;
+  equip(a: Actor, slot: "primary" | "pistol" | "melee"): void {
+    if (slot === "primary" && !a.primary) slot = "melee";
+    if (a === this.player && a.active !== slot) this.lastArmed = a.active;
     a.active = slot;
   }
 
@@ -776,13 +789,14 @@ export class Raidline {
 
   stepSound(a: Actor, dt: number): void {
     const spd = groundSpeed(a.vx, a.vz);
-    if (!a.onGround || spd < 1.05) return;
+    if (!a.onGround || spd < 0.85) return;
     a.lastFoot += dt * (spd / MOVE.run);
-    if (a.lastFoot <= MOVE.stepInterval) return;
+    const gap = a.walk ? MOVE.stepInterval * 1.15 : MOVE.stepInterval;
+    if (a.lastFoot <= gap) return;
     a.lastFoot = 0;
     const dist = a === this.player ? 0 : Math.hypot(a.x - this.player.x, a.z - this.player.z);
-    if (dist > 30) return;
-    const gain = a === this.player ? 1 : Math.max(0.12, 1 - dist / 30);
+    if (dist > 36) return;
+    const gain = a === this.player ? 1 : Math.max(0.16, 1 - dist / 36);
     this.audio.footstep(a.walk, gain);
   }
 
@@ -842,7 +856,8 @@ export class Raidline {
       a.fireHold = false;
     }
 
-    const fight = !!enemy && a.fireHold && dist < 28;
+    const holdPeek = !!enemy && a.team !== this.player.team && this.player.z < -8 && a.aimT > 0.16;
+    const fight = !!enemy && ((a.fireHold && dist < 32) || holdPeek);
     const wishF = fight ? 0 : dist > 0.7 ? 1 : 0;
     a.walk = !!enemy && dist < 5;
     a.crouch = false;
@@ -858,8 +873,8 @@ export class Raidline {
     a.vz = next.vz;
     a.vy = next.vy;
     if (a.team !== this.player.team && this.player.alive && !fight) {
-      a.vx *= 1.36;
-      a.vz *= 1.36;
+      a.vx *= 1.48;
+      a.vz *= 1.48;
     }
     if (!fight && dist > 1.1 && groundSpeed(a.vx, a.vz) < 0.35) {
       const here = nearestWaypoint(this.map.waypoints, a.x, a.z);
@@ -901,9 +916,8 @@ export class Raidline {
     if (a.hasBomb) return a.id % 2 === 0 ? "aSite" : "bSite";
     if (this.bombArmed && this.bombSite) return this.bombSite.id === "A" ? "aSite" : "bSite";
     if (a.team !== this.player.team && this.player.alive) {
-      if (this.liveElapsed < MATCH.spawnProt) {
-        return a.id % 3 === 0 ? "aDoor" : a.id % 3 === 1 ? "bDoor" : "cutL";
-      }
+      const peek = huntPeekGoal(this.player.z, a.id);
+      if (peek) return peek;
       return nearestWaypoint(this.map.waypoints, this.player.x, this.player.z).id;
     }
     return a.id % 2 === 0 ? "cutL" : "aSite";
@@ -1055,7 +1069,7 @@ export class Raidline {
     }
     const w = this.weapon(a);
     if (w.reloading > 0 || w.cooldown > 0) return;
-    if (w.mag <= 0) {
+    if (w.def.category !== "melee" && w.mag <= 0) {
       this.reload(a);
       return;
     }
@@ -1073,7 +1087,7 @@ export class Raidline {
     const w = this.weapon(a);
     const shotIndex = w.shots;
     const spray = sprayOffset(w);
-    w.mag -= 1;
+    if (w.def.category !== "melee") w.mag -= 1;
     w.cooldown = cycleTime(w.def);
     w.recoil += w.def.recoilY;
     w.shots += 1;
@@ -1084,9 +1098,13 @@ export class Raidline {
     const eye = this.eye(a);
     const spd = groundSpeed(a.vx, a.vz);
     const move = moveInaccuracy(spd, !a.onGround, a.crouch, a.walk);
+    const still = stillForFirstShot(spd);
     const ads = a === this.player && this.scoped && w.def.id === "longline" ? 0.15 : 1;
     const botTight = a.bot ? 1.35 : 1;
-    const spread = (w.def.spreadStand + move * (w.def.spreadMove / 0.03) + Math.abs(spray.x) * 0.25) * ads * botTight;
+    const spread =
+      w.def.category === "melee"
+        ? 0
+        : (shotCone(w.def.spreadStand, w.def.spreadMove, move, still) + Math.abs(spray.x) * 0.25) * ads * botTight;
     for (let p = 0; p < w.def.pellets; p++) {
       const yaw = a.yaw + spray.x + (Math.random() - 0.5) * spread * 2;
       const pitch = a.pitch + spray.y + (Math.random() - 0.5) * spread * 2;
@@ -1124,6 +1142,11 @@ export class Raidline {
         hit = o;
         head = body.head;
       }
+    }
+    if (w.def.category === "melee" && bestT * reach > w.def.range) {
+      bestT = w.def.range / reach;
+      hit = null;
+      head = false;
     }
     const end = origin.clone().addScaledVector(dir, reach * bestT);
     this.flashTracer(origin, end, a === this.player);
@@ -1237,6 +1260,7 @@ export class Raidline {
 
   reload(a: Actor): void {
     const w = this.weapon(a);
+    if (w.def.category === "melee") return;
     if (w.reloading > 0 || w.mag >= w.def.mag || w.reserve <= 0) return;
     w.reloading = w.def.reload;
     if (a === this.player) this.audio.reload();
@@ -1381,46 +1405,64 @@ export class Raidline {
 
   buildViewmodel(): void {
     this.viewmodel.clear();
+    this.gunRoot.clear();
+    this.knifeRoot.clear();
     const steel = new THREE.MeshStandardMaterial({ color: 0x5a5e62, metalness: 0.45, roughness: 0.4 });
     const grip = new THREE.MeshStandardMaterial({ color: 0x4a3428, roughness: 0.8 });
     const accent = new THREE.MeshStandardMaterial({ color: 0xc45a2a, roughness: 0.4, metalness: 0.2 });
-    const rec = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.028, 0.09), steel);
-    rec.position.set(0.085, -0.062, -0.2);
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.07), steel);
-    bar.position.set(0.085, -0.052, -0.26);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.034, 0.022), grip);
-    mag.position.set(0.085, -0.086, -0.185);
-    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.01, 0.02), accent);
-    sight.position.set(0.085, -0.044, -0.22);
+    const rec = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.02, 0.068), steel);
+    rec.position.set(0.122, -0.112, -0.255);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.007, 0.052), steel);
+    bar.position.set(0.122, -0.104, -0.3);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.024, 0.016), grip);
+    mag.position.set(0.122, -0.13, -0.242);
+    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.007, 0.014), accent);
+    sight.position.set(0.122, -0.098, -0.268);
     this.muzzle = new THREE.PointLight(0xffcc66, 0, 4.5, 2);
-    this.muzzle.position.set(0.085, -0.052, -0.31);
+    this.muzzle.position.set(0.122, -0.104, -0.335);
     this.muzzleSprite = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.32, 0.32),
+      new THREE.PlaneGeometry(0.22, 0.22),
       new THREE.MeshBasicMaterial({ color: 0xfff6c0, transparent: true, opacity: 0, depthWrite: false, depthTest: false, side: THREE.DoubleSide }),
     );
-    this.muzzleSprite.position.set(0.085, -0.052, -0.315);
+    this.muzzleSprite.position.set(0.122, -0.104, -0.34);
     this.muzzleSprite.renderOrder = 10;
-    this.viewmodel.add(rec, bar, mag, sight, this.muzzle, this.muzzleSprite);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.016, 0.042), grip);
+    stock.position.set(0.118, -0.118, -0.205);
+    this.gunRoot.add(rec, bar, mag, sight, stock, this.muzzle, this.muzzleSprite);
+    this.gunRoot.scale.set(0.78, 0.78, 0.78);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.01, 0.092), steel);
+    blade.position.set(0.12, -0.132, -0.205);
+    blade.rotation.x = 0.08;
+    const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.024, 0.016), grip);
+    hilt.position.set(0.12, -0.14, -0.158);
+    this.knifeRoot.add(blade, hilt);
+    this.knifeRoot.scale.set(0.86, 0.86, 0.86);
+    this.knifeRoot.visible = false;
+    this.viewmodel.add(this.gunRoot, this.knifeRoot);
     this.camera.add(this.viewmodel);
     this.scene.add(this.camera);
   }
 
   updateViewmodel(a: Actor): void {
     this.viewmodel.visible = this.phase !== "menu" && a.alive;
+    const melee = a.active === "melee";
+    this.gunRoot.visible = !melee;
+    this.knifeRoot.visible = melee;
     const spd = groundSpeed(a.vx, a.vz);
     this.bob += spd * 0.018;
     const w = this.weapon(a);
-    const holster = this.phase === "freeze" ? 0.08 : 0;
+    const holster = this.phase === "freeze" ? 0.06 : 0;
     const rel = w.reloading > 0 ? 1 - w.reloading / w.def.reload : 0;
     const dip = w.reloading > 0 ? 0.08 + Math.sin(rel * Math.PI) * 0.05 : 0;
     const punch = this.gunPunch;
     this.viewmodel.position.set(
-      Math.sin(this.bob) * 0.012 + punch * 0.002,
-      Math.abs(Math.sin(this.bob * 2)) * 0.01 - holster - dip - punch * 0.008,
-      punch * 0.012,
+      0.055 + Math.sin(this.bob) * 0.008 + punch * 0.002,
+      -0.118 + Math.abs(Math.sin(this.bob * 2)) * 0.006 - holster - dip - punch * 0.007,
+      0.045 + punch * 0.008,
     );
-    this.viewmodel.rotation.x = (w.reloading > 0 ? 0.72 + Math.sin(rel * 14) * 0.16 : 0) - punch * 0.05;
-    this.viewmodel.rotation.z = (w.reloading > 0 ? Math.sin(rel * 10) * 0.28 : 0) + punch * 0.02;
+    this.viewmodel.rotation.x = (w.reloading > 0 ? 0.72 + Math.sin(rel * 14) * 0.16 : 0.14) - punch * 0.05;
+    this.viewmodel.rotation.y = -0.06;
+    this.viewmodel.rotation.z = (w.reloading > 0 ? Math.sin(rel * 10) * 0.28 : -0.16) + punch * 0.02;
   }
 
   orbitMenu(dt: number): void {
@@ -1678,7 +1720,7 @@ export class Raidline {
     const w = this.weapon(p);
     el("hp").textContent = String(Math.max(0, Math.ceil(p.hp)));
     el("armor").textContent = String(Math.ceil(p.armor));
-    el("ammo").textContent = !p.alive ? "—" : w.reloading > 0 ? "REL" : `${w.mag} / ${w.reserve}`;
+    el("ammo").textContent = !p.alive || w.def.category === "melee" ? "—" : w.reloading > 0 ? "REL" : `${w.mag} / ${w.reserve}`;
     el("gun").textContent = !p.alive ? "SPECTATE" : w.reloading > 0 ? "RELOAD" : w.def.name;
     el("money").textContent = `$${p.money}`;
     el("score-raid").textContent = String(teamFragScore(this.actors, TEAM.RAID));
@@ -1744,7 +1786,7 @@ export class Raidline {
     if (this.player.hasBomb) return "Carry the charge to A Vault or B Quay  ·  hold E to arm";
     if (this.bombArmed && this.player.team !== this.attackTeam) return "Charge is live — hold E on the site to cut it";
     if (this.phase === "end") return "Next round…";
-    return "WASD move  ·  Shift walk  ·  Ctrl crouch  ·  R reload  ·  F flare  ·  C veil  ·  V burst";
+    return "WASD  ·  Shift walk  ·  1/2/3 gun pistol Bit  ·  Q last  ·  R reload";
   }
 
   phaseLabel(): string {
