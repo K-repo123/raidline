@@ -10,7 +10,7 @@ export class AudioEngine {
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new Ctx();
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.42;
+      this.master.gain.value = 0.58;
       this.master.connect(this.ctx.destination);
     }
     void this.ctx.resume();
@@ -64,49 +64,58 @@ export class AudioEngine {
     src.stop(t + dur + 0.02);
   }
 
-  gun(kind: string): void {
+  gun(kind: string, gain = 1): void {
+    const g = gain;
     switch (kind) {
       case "dart":
-        this.noise(0.05, 0.28, 800, 4200);
-        this.tone(420, 0.06, "square", 0.08);
+        this.noise(0.07, 0.42 * g, 700, 4500);
+        this.tone(400, 0.08, "square", 0.12 * g);
         break;
       case "anvil":
-        this.noise(0.09, 0.4, 200, 1800);
-        this.tone(140, 0.1, "sawtooth", 0.14);
+        this.noise(0.16, 0.72 * g, 120, 1600);
+        this.tone(110, 0.18, "sawtooth", 0.28 * g);
+        this.tone(58, 0.2, "sine", 0.18 * g);
         break;
       case "stitch":
-        this.noise(0.04, 0.22, 1200, 5000);
-        this.tone(680, 0.04, "square", 0.05);
+        this.noise(0.07, 0.48 * g, 900, 6200);
+        this.tone(640, 0.07, "square", 0.14 * g);
+        this.tone(180, 0.05, "triangle", 0.08 * g);
         break;
       case "ridge":
-        this.noise(0.07, 0.36, 400, 2800);
-        this.tone(190, 0.08, "sawtooth", 0.1);
-        this.tone(90, 0.1, "sine", 0.08);
+        this.noise(0.1, 0.55 * g, 350, 2800);
+        this.tone(190, 0.1, "sawtooth", 0.16 * g);
+        this.tone(90, 0.12, "sine", 0.12 * g);
         break;
       case "quarrel":
-        this.noise(0.08, 0.38, 350, 2400);
-        this.tone(160, 0.09, "triangle", 0.12);
+        this.noise(0.11, 0.58 * g, 300, 2400);
+        this.tone(160, 0.11, "triangle", 0.18 * g);
         break;
       case "longline":
-        this.noise(0.16, 0.5, 150, 1400);
-        this.tone(90, 0.2, "sawtooth", 0.16);
-        this.tone(720, 0.08, "sine", 0.06);
+        this.noise(0.2, 0.7 * g, 120, 1400);
+        this.tone(90, 0.22, "sawtooth", 0.22 * g);
+        this.tone(720, 0.1, "sine", 0.1 * g);
         break;
       case "hatch":
-        this.noise(0.12, 0.42, 180, 1600);
-        this.tone(70, 0.12, "square", 0.1);
+        this.noise(0.15, 0.62 * g, 140, 1600);
+        this.tone(70, 0.14, "square", 0.16 * g);
         break;
       default:
-        this.noise(0.06, 0.3, 400, 3000);
+        this.noise(0.08, 0.42 * g, 400, 3000);
     }
   }
 
-  footstep(rate: number): void {
+  impact(): void {
+    this.noise(0.05, 0.22, 400, 2800);
+    this.tone(180, 0.04, "square", 0.06);
+  }
+
+  footstep(rate: number, quiet = false): void {
     this.footT += rate;
     if (this.footT < 1) return;
     this.footT = 0;
-    this.noise(0.045, 0.09, 80, 500);
-    this.tone(70 + Math.random() * 20, 0.04, "sine", 0.04);
+    const g = quiet ? 0.035 : 0.1;
+    this.noise(0.045, g, 80, 500);
+    this.tone(70 + Math.random() * 20, 0.04, "sine", quiet ? 0.015 : 0.045);
   }
 
   jump(): void {
@@ -125,15 +134,18 @@ export class AudioEngine {
 
   hit(head: boolean): void {
     if (head) {
-      this.tone(880, 0.07, "square", 0.1);
-      this.tone(1320, 0.05, "sine", 0.07);
+      this.tone(980, 0.1, "square", 0.2);
+      this.tone(1480, 0.07, "sine", 0.14);
+      this.noise(0.04, 0.16, 1800, 7000);
     } else {
-      this.tone(220, 0.05, "sine", 0.07);
+      this.tone(240, 0.07, "sine", 0.14);
+      this.noise(0.035, 0.12, 600, 3200);
     }
   }
 
   hurt(): void {
-    this.tone(90, 0.12, "sawtooth", 0.08);
+    this.tone(85, 0.16, "sawtooth", 0.16);
+    this.noise(0.08, 0.14, 80, 500);
   }
 
   buy(): void {

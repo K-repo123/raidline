@@ -27,6 +27,7 @@ import {
   hitDamage,
   makeWeapon,
   sprayOffset,
+  viewKick,
   type WeaponState,
 } from "./weapons";
 
@@ -121,10 +122,14 @@ export class Raidline {
   bombMesh: THREE.Mesh | null = null;
   smokeMeshes: THREE.Mesh[] = [];
   smokeT: { x: number; z: number; t: number }[] = [];
-  tracer: THREE.Line | null = null;
+  tracers: { mesh: THREE.Mesh; t: number }[] = [];
+  impacts: { mesh: THREE.Mesh; t: number }[] = [];
   viewmodel = new THREE.Group();
   muzzle: THREE.PointLight | null = null;
+  muzzleSprite: THREE.Mesh | null = null;
+  muzzleT = 0;
   bob = 0;
+  hitHead = false;
   lockBound = false;
   paused = false;
   ignoreLook = 0;
@@ -622,6 +627,7 @@ export class Raidline {
     }
 
     this.useHold(dt);
+    this.tickFx(dt);
     this.hud();
   }
 
@@ -690,7 +696,7 @@ export class Raidline {
       a.lastFoot += dt * (spd / MOVE.run);
       if (a.lastFoot > MOVE.stepInterval) {
         a.lastFoot = 0;
-        this.audio.footstep(spd / MOVE.run);
+        this.audio.footstep(spd / MOVE.run, a.walk);
       }
     }
   }
@@ -731,20 +737,24 @@ export class Raidline {
     const dx = tx - a.x;
     const dz = tz - a.z;
     const dist = Math.hypot(dx, dz);
-    const wantYaw = Math.atan2(dx, dz);
-    a.yaw = this.turn(a.yaw, wantYaw, dt * 3.2);
+    const wantYaw = enemy ? Math.atan2(enemy.x - a.x, enemy.z - a.z) : Math.atan2(dx, dz);
+    a.yaw = this.turn(a.yaw, wantYaw, dt * (enemy ? 7.2 : 3.6));
     if (enemy) {
-      const ey = enemy.y + (enemy.crouch ? 1.05 : 1.5);
-      a.pitch = this.turn(a.pitch, Math.atan2(ey - (a.y + 1.5), Math.hypot(enemy.x - a.x, enemy.z - a.z)), dt * 4);
-      a.fireHold = true;
+      const ey = enemy.y + (enemy.crouch ? 1.08 : 1.42);
+      a.pitch = this.turn(a.pitch, Math.atan2(ey - (a.y + 1.5), Math.hypot(enemy.x - a.x, enemy.z - a.z)), dt * 7);
+      let aim = wantYaw - a.yaw;
+      while (aim > Math.PI) aim -= Math.PI * 2;
+      while (aim < -Math.PI) aim += Math.PI * 2;
+      a.fireHold = Math.abs(aim) < 0.1;
     } else {
       a.pitch *= 1 - dt * 3;
       a.fireHold = false;
     }
 
-    const wishF = dist > 0.7 ? 1 : 0;
-    a.walk = !!enemy && dist < 10;
-    a.crouch = !!enemy && dist > 16 && a.onGround;
+    const fight = !!enemy && a.fireHold && dist < 22;
+    const wishF = fight ? 0 : dist > 0.7 ? 1 : 0;
+    a.walk = !!enemy && (dist < 14 || fight);
+    a.crouch = false;
     const next = stepMovement(a.vx, a.vz, a.vy, {
       forward: wishF,
       right: 0,
@@ -775,10 +785,13 @@ export class Raidline {
   }
 
   botGoal(a: Actor): string {
-    if (a.hasBomb) return Math.random() < 0.5 || a.id % 2 === 0 ? "aSite" : "bSite";
-    if (a.team === this.attackTeam) return a.id % 2 === 0 ? "aSite" : "bSite";
+    if (a.hasBomb) return a.id % 2 === 0 ? "aSite" : "bSite";
     if (this.bombArmed && this.bombSite) return this.bombSite.id === "A" ? "aSite" : "bSite";
-    return a.id % 2 === 0 ? "aSite" : "bSite";
+    if (a.team !== this.player.team && this.player.alive && a.id % 2 === 1) {
+      return nearestWaypoint(this.map.waypoints, this.player.x, this.player.z).id;
+    }
+    if (a.team === this.attackTeam) return a.id % 2 === 0 ? "aSite" : "mid";
+    return a.id % 2 === 0 ? "mid" : "aSite";
   }
 
   stepToward(from: Waypoint, goalId: string): Waypoint {
@@ -909,32 +922,35 @@ export class Raidline {
 
   fire(a: Actor): void {
     const w = this.weapon(a);
+    const shotIndex = w.shots;
+    const spray = sprayOffset(w);
     w.mag -= 1;
     w.cooldown = cycleTime(w.def);
     w.recoil += w.def.recoilY;
     w.shots += 1;
-    if (a === this.player) this.audio.gun(w.def.sound);
+    w.idle = 0;
+    const dist = Math.hypot(a.x - this.player.x, a.z - this.player.z);
+    const hear = a === this.player ? 1 : Math.max(0.18, 1 - dist / 42);
+    if (a === this.player || hear > 0.2) this.audio.gun(w.def.sound, hear);
     const eye = this.eye(a);
-    const spray = sprayOffset(w);
     const spd = groundSpeed(a.vx, a.vz);
-    const move = moveInaccuracy(spd, !a.onGround, a.crouch);
+    const move = moveInaccuracy(spd, !a.onGround, a.crouch, a.walk);
     const ads = a === this.player && this.scoped && w.def.id === "longline" ? 0.15 : 1;
-    const spread = (w.def.spreadStand + move * (w.def.spreadMove / 0.03) + Math.abs(spray.x) * 0.3) * ads;
+    const botTight = a.bot && spd < 1.6 ? 0.35 : 1;
+    const spread = (w.def.spreadStand + move * (w.def.spreadMove / 0.03) + Math.abs(spray.x) * 0.25) * ads * botTight;
     for (let p = 0; p < w.def.pellets; p++) {
       const yaw = a.yaw + spray.x + (Math.random() - 0.5) * spread * 2;
       const pitch = a.pitch + spray.y + (Math.random() - 0.5) * spread * 2;
       const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).normalize();
       this.traceShot(a, eye, dir, w);
     }
+    const kick = viewKick(w.def, shotIndex);
     if (a === this.player) {
-      a.pitch += w.def.recoilY * 0.35;
-      a.yaw += (Math.random() - 0.5) * w.def.recoilX;
-      if (this.muzzle) {
-        this.muzzle.intensity = 8;
-        setTimeout(() => {
-          if (this.muzzle) this.muzzle.intensity = 0;
-        }, 35);
-      }
+      a.pitch += kick.pitch;
+      a.yaw += kick.yaw;
+      a.pitch = Math.max(-1.35, Math.min(1.35, a.pitch));
+      this.muzzleT = 0.09;
+      if (this.muzzle) this.muzzle.intensity = 22;
     }
   }
 
@@ -960,11 +976,15 @@ export class Raidline {
       }
     }
     const end = origin.clone().addScaledVector(dir, reach * bestT);
-    if (a === this.player) this.flashTracer(origin, end);
+    this.flashTracer(origin, end);
     if (hit) {
       const dist = origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z));
       const dmg = hitDamage(w.def, dist, head, hit.armor > 0, hit.helm);
+      this.spawnImpact(end, head);
       this.hurt(hit, dmg, a, head);
+    } else {
+      this.spawnImpact(end, false);
+      if (a === this.player) this.audio.impact();
     }
   }
 
@@ -1016,6 +1036,7 @@ export class Raidline {
     target.hp -= dmg;
     if (src === this.player) {
       this.hitmark = 1;
+      this.hitHead = head;
       this.audio.hit(head);
     }
     if (target === this.player) {
@@ -1099,7 +1120,7 @@ export class Raidline {
 
   closestVisible(a: Actor): Actor | null {
     let best: Actor | null = null;
-    let bestD = 48;
+    let bestD = 56;
     const eye = this.eye(a);
     for (const o of this.actors) {
       if (!o.alive || o.team === a.team) continue;
@@ -1108,8 +1129,8 @@ export class Raidline {
       const to = this.eye(o);
       if (this.inSmoke(a.x, a.z, o.x, o.z)) continue;
       const t = segmentHitsBoxes(eye.x, eye.y, eye.z, to.x, to.y, to.z, this.map.solids);
-      if (d > 12 && t < 0.9) continue;
-      if (d > 6 && t < 0.4) continue;
+      if (d > 16 && t < 0.88) continue;
+      if (d > 8 && t < 0.45) continue;
       bestD = d;
       best = o;
     }
@@ -1205,9 +1226,14 @@ export class Raidline {
     mag.position.set(0.085, -0.086, -0.185);
     const sight = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.01, 0.02), accent);
     sight.position.set(0.085, -0.044, -0.22);
-    this.muzzle = new THREE.PointLight(0xffcc66, 0, 1.6, 2);
+    this.muzzle = new THREE.PointLight(0xffcc66, 0, 4.5, 2);
     this.muzzle.position.set(0.085, -0.052, -0.31);
-    this.viewmodel.add(rec, bar, mag, sight, this.muzzle);
+    this.muzzleSprite = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.07, 0.07),
+      new THREE.MeshBasicMaterial({ color: 0xfff3c0, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    this.muzzleSprite.position.set(0.085, -0.052, -0.315);
+    this.viewmodel.add(rec, bar, mag, sight, this.muzzle, this.muzzleSprite);
     this.camera.add(this.viewmodel);
     this.scene.add(this.camera);
   }
@@ -1279,16 +1305,52 @@ export class Raidline {
   }
 
   flashTracer(from: THREE.Vector3, to: THREE.Vector3): void {
-    if (this.tracer) this.scene.remove(this.tracer);
-    const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
-    this.tracer = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xfff1c2, transparent: true, opacity: 0.85 }));
-    this.scene.add(this.tracer);
-    setTimeout(() => {
-      if (this.tracer) {
-        this.scene.remove(this.tracer);
-        this.tracer = null;
+    const len = Math.max(0.2, from.distanceTo(to));
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.045, 0.045, len),
+      new THREE.MeshBasicMaterial({ color: 0xffe29a, transparent: true, opacity: 0.95 }),
+    );
+    mesh.position.copy(from).lerp(to, 0.5);
+    mesh.lookAt(to);
+    this.scene.add(mesh);
+    this.tracers.push({ mesh, t: 0.13 });
+  }
+
+  spawnImpact(at: THREE.Vector3, head: boolean): void {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(head ? 0.14 : 0.08, 8, 6),
+      new THREE.MeshBasicMaterial({ color: head ? 0xffe060 : 0xff9a3a, transparent: true, opacity: 1 }),
+    );
+    mesh.position.copy(at);
+    this.scene.add(mesh);
+    this.impacts.push({ mesh, t: head ? 0.16 : 0.1 });
+  }
+
+  tickFx(dt: number): void {
+    this.muzzleT = Math.max(0, this.muzzleT - dt);
+    if (this.muzzle) this.muzzle.intensity = this.muzzleT > 0 ? 22 * (this.muzzleT / 0.09) : 0;
+    if (this.muzzleSprite) {
+      const mat = this.muzzleSprite.material as THREE.MeshBasicMaterial;
+      mat.opacity = this.muzzleT > 0 ? Math.min(1, this.muzzleT / 0.05) : 0;
+      const s = 0.7 + this.muzzleT * 8;
+      this.muzzleSprite.scale.set(s, s, 1);
+    }
+    const fade = (list: { mesh: THREE.Mesh; t: number }[]) => {
+      for (let i = list.length - 1; i >= 0; i--) {
+        const fx = list[i];
+        fx.t -= dt;
+        const mat = fx.mesh.material as THREE.MeshBasicMaterial;
+        mat.opacity = Math.max(0, fx.t * 8);
+        if (fx.t <= 0) {
+          this.scene.remove(fx.mesh);
+          fx.mesh.geometry.dispose();
+          mat.dispose();
+          list.splice(i, 1);
+        }
       }
-    }, 70);
+    };
+    fade(this.tracers);
+    fade(this.impacts);
   }
 
   draw(): void {
@@ -1355,6 +1417,7 @@ export class Raidline {
     const gap = 6 + groundSpeed(p.vx, p.vz) * 3 + w.recoil * 40;
     document.documentElement.style.setProperty("--gap", `${gap}px`);
     el("hitmark").style.opacity = String(this.hitmark);
+    el("hitmark").classList.toggle("hs", this.hitHead);
     el("flash").style.opacity = String(Math.min(1, this.flash));
     el("hurt").style.opacity = this.dmgT > 0 ? "0.45" : "0";
     const needPlant = this.keys.has("KeyE") && p.hasBomb && siteAt(this.map.sites, p.x, p.z) && !this.bombArmed;

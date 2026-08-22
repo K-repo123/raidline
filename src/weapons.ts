@@ -229,6 +229,7 @@ export type WeaponState = {
   reloading: number;
   recoil: number;
   shots: number;
+  idle: number;
 };
 
 export function makeWeapon(id: string): WeaponState {
@@ -241,6 +242,7 @@ export function makeWeapon(id: string): WeaponState {
     reloading: 0,
     recoil: 0,
     shots: 0,
+    idle: 1,
   };
 }
 
@@ -250,14 +252,34 @@ export function cycleTime(def: WeaponDef): number {
 
 export function applyRecoil(w: WeaponState, dt: number): void {
   w.recoil = Math.max(0, w.recoil - w.def.recovery * dt);
-  if (w.recoil < 0.002) w.shots = 0;
+  w.idle += dt;
+  if (w.idle > 0.28) w.shots = 0;
 }
 
+/** shotIndex 0 = first shot (standing first-shot is dead on). */
 export function sprayOffset(w: WeaponState): { x: number; y: number } {
   const i = w.shots;
-  const climb = Math.min(i, 8) * w.def.recoilY;
+  if (i <= 0) return { x: 0, y: 0 };
+  const climb = Math.min(i, 10) * w.def.recoilY;
   const sway = Math.sin(i * 1.7) * w.def.recoilX * Math.min(i, 10);
-  return { x: sway, y: climb + w.recoil * 0.35 };
+  return { x: sway, y: climb + w.recoil * 0.2 };
+}
+
+/** Camera punch the player counters by pulling the mouse down. */
+export function viewKick(def: WeaponDef, shotIndex: number): { pitch: number; yaw: number } {
+  if (def.id === "anvil") {
+    return { pitch: 0.095, yaw: (shotIndex % 2 === 0 ? -0.014 : 0.016) };
+  }
+  if (def.id === "stitch") {
+    return {
+      pitch: 0.016 + Math.min(shotIndex, 12) * 0.0042,
+      yaw: Math.sin(shotIndex * 1.35) * (0.007 + Math.min(shotIndex, 8) * 0.0014),
+    };
+  }
+  return {
+    pitch: def.recoilY * 2.4 + Math.min(shotIndex, 8) * def.recoilY * 0.55,
+    yaw: Math.sin(shotIndex * 1.5) * def.recoilX * 2.2,
+  };
 }
 
 export function hitDamage(

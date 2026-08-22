@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MATCH } from "./config";
-import { GEAR, WEAPONS, hitDamage, makeWeapon } from "./weapons";
+import { GEAR, WEAPONS, hitDamage, makeWeapon, sprayOffset, viewKick } from "./weapons";
 
 describe("economy and weapons", () => {
   it("opening buy cannot afford a rifle", () => {
@@ -22,6 +22,20 @@ describe("economy and weapons", () => {
     const chest = hitDamage(w.def, 12, false, true, true);
     const head = hitDamage(w.def, 12, true, true, true);
     assert.ok(head > chest * 2);
+  });
+
+  it("first shot is on the crosshair", () => {
+    const w = makeWeapon("anvil");
+    const s = sprayOffset(w);
+    assert.equal(s.x, 0);
+    assert.equal(s.y, 0);
+  });
+
+  it("Anvil kicks harder than Stitch on the first shot", () => {
+    const anvil = viewKick(WEAPONS.anvil, 0);
+    const stitch = viewKick(WEAPONS.stitch, 0);
+    assert.ok(anvil.pitch > stitch.pitch * 3);
+    assert.ok(viewKick(WEAPONS.stitch, 8).pitch > stitch.pitch);
   });
 
   it("names stay original", () => {

@@ -79,6 +79,12 @@ export function stepMovement(
   if (input.onGround) {
     ({ vx, vz } = applyFriction(vx, vz, dt));
     if (wishMag > 0) {
+      const spd = Math.hypot(vx, vz);
+      const along = spd > 1e-6 ? (vx * wish.x + vz * wish.z) / spd : 0;
+      if (spd > 0.25 && along < -0.25) {
+        vx *= 0.1;
+        vz *= 0.1;
+      }
       ({ vx, vz } = accelerate(vx, vz, wish.x, wish.z, speed, MOVE.accel, dt));
     }
     const horiz = Math.hypot(vx, vz);
@@ -204,10 +210,11 @@ export function groundSpeed(vx: number, vz: number): number {
   return Math.hypot(vx, vz);
 }
 
-/** Rifle inaccuracy from speed — standing still is tight, running is wild. */
-export function moveInaccuracy(speed: number, airborne: boolean, crouch: boolean): number {
+/** Rifle inaccuracy from speed — standing still is tight, walk is quiet/accurate. */
+export function moveInaccuracy(speed: number, airborne: boolean, crouch: boolean, walk = false): number {
   if (airborne) return 0.048;
-  const walkPenalty = Math.max(0, speed - 1.15) * 0.012;
+  if (walk && speed <= MOVE.walk + 0.15) return crouch ? 0.0006 : 0.0012;
+  const runPenalty = Math.max(0, speed - 1.05) * 0.013;
   const crouchBonus = crouch ? 0.55 : 1;
-  return walkPenalty * crouchBonus;
+  return runPenalty * crouchBonus;
 }
