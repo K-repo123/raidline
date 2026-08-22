@@ -39,6 +39,7 @@ body {
   place-items: center;
   background: linear-gradient(180deg, rgba(12, 16, 18, 0.35), rgba(10, 12, 12, 0.72));
   z-index: 20;
+  pointer-events: auto;
 }
 
 .menu-card {
@@ -92,6 +93,9 @@ h1 {
   text-transform: uppercase;
   padding: 14px;
   cursor: pointer;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 
 #btn-play:hover {
@@ -106,6 +110,9 @@ h1 {
 
 #hud {
   pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 5;
 }
 
 #top {

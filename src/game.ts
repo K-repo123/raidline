@@ -17,6 +17,7 @@ import {
   segmentHitsBoxes,
   stepMovement,
 } from "./physics";
+import { isTitleStartKey } from "./titleStart";
 import {
   GEAR,
   WEAPONS,
@@ -123,6 +124,7 @@ export class Raidline {
   viewmodel = new THREE.Group();
   muzzle: THREE.PointLight | null = null;
   bob = 0;
+  lockBound = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -135,8 +137,8 @@ export class Raidline {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x6b7c86);
     this.scene.fog = new THREE.Fog(0x6b7c86, 70, 160);
-    this.buildViewmodel();
     this.camera = new THREE.PerspectiveCamera(78, innerWidth / innerHeight, 0.05, 160);
+    this.buildViewmodel();
     this.map = buildAshpier();
     this.scene.add(this.map.visuals);
     this.light();
@@ -174,6 +176,11 @@ export class Raidline {
       this.renderer.setSize(innerWidth, innerHeight);
     });
     addEventListener("keydown", (e) => {
+      if (this.phase === "menu" && isTitleStartKey(e.code, e.key)) {
+        e.preventDefault();
+        this.start();
+        return;
+      }
       this.keys.add(e.code);
       if (e.code === "KeyB" && this.canBuy()) {
         this.buyOpen = !this.buyOpen;
@@ -220,21 +227,41 @@ export class Raidline {
       this.player.pitch -= e.movementY * sens;
       this.player.pitch = Math.max(-1.35, Math.min(1.35, this.player.pitch));
     });
-    el("btn-play").addEventListener("click", () => this.start());
+    const play = el<HTMLButtonElement>("btn-play");
+    play.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.start();
+    });
+    play.addEventListener("pointerup", (e) => {
+      if (e.button !== 0 || this.phase !== "menu") return;
+      e.preventDefault();
+      this.start();
+    });
     document.querySelectorAll("[data-buy]").forEach((n) => {
       n.addEventListener("click", () => this.buyItem(this.player, (n as HTMLElement).dataset.buy!));
     });
   }
 
   start(): void {
+    if (this.phase !== "menu") return;
     this.audio.unlock();
     el("menu").classList.add("hidden");
     const canvas = this.renderer.domElement;
-    canvas.requestPointerLock();
-    document.addEventListener("pointerlockchange", () => {
-      this.locked = document.pointerLockElement === canvas;
-    });
-    if (this.phase === "menu") this.beginRound();
+    if (!this.lockBound) {
+      this.lockBound = true;
+      document.addEventListener("pointerlockchange", () => {
+        this.locked = document.pointerLockElement === canvas;
+      });
+    }
+    try {
+      const lock = canvas.requestPointerLock();
+      if (lock && typeof (lock as Promise<void>).catch === "function") {
+        void (lock as Promise<void>).catch(() => undefined);
+      }
+    } catch {
+      /* pointer lock is optional; the round still starts */
+    }
+    this.beginRound();
   }
 
   resetMatch(): void {
