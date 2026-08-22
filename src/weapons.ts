@@ -279,35 +279,37 @@ export function cycleTime(def: WeaponDef): number {
 export function applyRecoil(w: WeaponState, dt: number): void {
   w.recoil = Math.max(0, w.recoil - w.def.recovery * dt);
   w.idle += dt;
-  if (w.idle > 0.28) w.shots = 0;
+  if (w.idle > 0.22) w.shots = 0;
 }
 
 /** shotIndex 0 = first shot (standing first-shot is dead on). */
 export function sprayOffset(w: WeaponState): { x: number; y: number } {
   const i = w.shots;
   if (i <= 0) return { x: 0, y: 0 };
-  const climb = Math.min(i, 10) * w.def.recoilY;
-  const sway = Math.sin(i * 1.7) * w.def.recoilX * Math.min(i, 10);
-  return { x: sway, y: climb + w.recoil * 0.2 };
+  // Tiny pattern around the crosshair. Camera kick is the climb you pull down —
+  // putting full recoilY on the bullet made bursts miss even with a perfect counter.
+  const climb = Math.min(i, 8) * w.def.recoilY * 0.18;
+  const sway = Math.sin(i * 1.55) * w.def.recoilX * Math.min(i, 8) * 0.4;
+  return { x: sway, y: climb + w.recoil * 0.05 };
 }
 
 /** Camera punch the player counters by pulling the mouse down. */
 export function viewKick(def: WeaponDef, shotIndex: number): { pitch: number; yaw: number } {
   if (def.category === "melee") {
-    return { pitch: 0.018, yaw: 0.006 };
+    return { pitch: 0.014, yaw: 0.004 };
   }
   if (def.id === "anvil") {
-    return { pitch: 0.055, yaw: (shotIndex % 2 === 0 ? -0.01 : 0.012) };
+    return { pitch: 0.036, yaw: (shotIndex % 2 === 0 ? -0.006 : 0.007) };
   }
   if (def.id === "stitch") {
     return {
-      pitch: 0.012 + Math.min(shotIndex, 12) * 0.0034,
-      yaw: Math.sin(shotIndex * 1.35) * (0.006 + Math.min(shotIndex, 8) * 0.0012),
+      pitch: 0.008 + Math.min(shotIndex, 12) * 0.0016,
+      yaw: Math.sin(shotIndex * 1.35) * (0.0035 + Math.min(shotIndex, 8) * 0.0006),
     };
   }
   return {
-    pitch: def.recoilY * 2.2 + Math.min(shotIndex, 8) * def.recoilY * 0.5,
-    yaw: Math.sin(shotIndex * 1.5) * def.recoilX * 1.6,
+    pitch: def.recoilY * 1.35 + Math.min(shotIndex, 8) * def.recoilY * 0.16,
+    yaw: Math.sin(shotIndex * 1.5) * def.recoilX * 0.7,
   };
 }
 
