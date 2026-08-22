@@ -47,6 +47,14 @@ describe("economy and weapons", () => {
     assert.ok(viewKick(WEAPONS.stitch, 8).pitch > stitch.pitch);
   });
 
+  it("first-shot camera climb is pull-down-able, not a horizon slap", () => {
+    const dart = viewKick(WEAPONS.dart, 0);
+    const anvil = viewKick(WEAPONS.anvil, 0);
+    assert.ok(dart.pitch > 0 && dart.pitch < 0.04);
+    assert.ok(anvil.pitch > dart.pitch);
+    assert.ok(anvil.pitch < 0.08);
+  });
+
   it("vest soaks HP instead of passing the full chunk", () => {
     const raw = hitDamage(WEAPONS.ridge, 10, false, false, false);
     const soaked = soakArmor(100, false, raw, false);

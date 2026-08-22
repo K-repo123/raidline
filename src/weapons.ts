@@ -268,17 +268,17 @@ export function sprayOffset(w: WeaponState): { x: number; y: number } {
 /** Camera punch the player counters by pulling the mouse down. */
 export function viewKick(def: WeaponDef, shotIndex: number): { pitch: number; yaw: number } {
   if (def.id === "anvil") {
-    return { pitch: 0.095, yaw: (shotIndex % 2 === 0 ? -0.014 : 0.016) };
+    return { pitch: 0.055, yaw: (shotIndex % 2 === 0 ? -0.01 : 0.012) };
   }
   if (def.id === "stitch") {
     return {
-      pitch: 0.016 + Math.min(shotIndex, 12) * 0.0042,
-      yaw: Math.sin(shotIndex * 1.35) * (0.007 + Math.min(shotIndex, 8) * 0.0014),
+      pitch: 0.012 + Math.min(shotIndex, 12) * 0.0034,
+      yaw: Math.sin(shotIndex * 1.35) * (0.006 + Math.min(shotIndex, 8) * 0.0012),
     };
   }
   return {
-    pitch: def.recoilY * 6.2 + Math.min(shotIndex, 8) * def.recoilY * 0.7,
-    yaw: Math.sin(shotIndex * 1.5) * def.recoilX * 2.2,
+    pitch: def.recoilY * 2.2 + Math.min(shotIndex, 8) * def.recoilY * 0.5,
+    yaw: Math.sin(shotIndex * 1.5) * def.recoilX * 1.6,
   };
 }
 
