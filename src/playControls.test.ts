@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isMatchPhase, nextBuyOpen, shouldDiscardLook } from "./playControls";
+import { isMatchPhase, nextBuyOpen, shouldDiscardLook, shouldIgnoreLockShot, siteUseState } from "./playControls";
 
 describe("buy toggle", () => {
   it("B closes Supply even when the buy window has ended", () => {
@@ -25,5 +25,41 @@ describe("match phases", () => {
   it("treats freeze and live as in-match", () => {
     assert.equal(isMatchPhase("live"), true);
     assert.equal(isMatchPhase("menu"), false);
+  });
+});
+
+describe("pointer-lock fire", () => {
+  it("ignores the click that acquires lock", () => {
+    assert.equal(shouldIgnoreLockShot(false, false), true);
+    assert.equal(shouldIgnoreLockShot(true, true), true);
+    assert.equal(shouldIgnoreLockShot(true, false), false);
+  });
+});
+
+describe("site use", () => {
+  it("only progresses plant/defuse inside the trigger", () => {
+    const off = siteUseState({
+      holdingE: true,
+      onSite: false,
+      nearBomb: false,
+      hasBomb: true,
+      bombArmed: false,
+      defending: false,
+    });
+    assert.equal(off.progressPlant, false);
+    assert.equal(off.showBar, false);
+    assert.equal(off.offSiteHint, true);
+
+    const on = siteUseState({
+      holdingE: true,
+      onSite: true,
+      nearBomb: false,
+      hasBomb: true,
+      bombArmed: false,
+      defending: false,
+    });
+    assert.equal(on.progressPlant, true);
+    assert.equal(on.showBar, true);
+    assert.equal(on.offSiteHint, false);
   });
 });

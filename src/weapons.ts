@@ -299,3 +299,16 @@ export function hitDamage(
   }
   return dmg;
 }
+
+/** Vest / helm take a chunk of HP. AR depletes as it soaks. */
+export function soakArmor(armor: number, helm: boolean, dmg: number, head: boolean): { hp: number; armor: number } {
+  if (armor <= 0) return { hp: dmg, armor: 0 };
+  const frac = head ? (helm ? 0.42 : 0.12) : 0.5;
+  const soaked = dmg * frac;
+  return { hp: Math.max(0, dmg - soaked), armor: Math.max(0, armor - soaked) };
+}
+
+/** Bot bullets chip; they must not AWP-delete the player in one sample. */
+export function botChipDamage(dmg: number, armored: boolean): number {
+  return Math.min(dmg, armored ? 14 : 20);
+}

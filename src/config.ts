@@ -23,6 +23,7 @@ export const MATCH = {
   startMoney: 800,
   maxMoney: 16000,
   buyWindow: 20,
+  minWipeTime: 45,
 } as const;
 
 export const MOVE = {
