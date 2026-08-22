@@ -313,8 +313,9 @@ export function botChipDamage(dmg: number, armored: boolean): number {
   return Math.min(dmg, armored ? 14 : 20);
 }
 
-/** Hard cap so five bots cannot delete the player in one simulate tick. */
-export const PLAYER_HURT_PER_TICK = 24;
+/** Hard caps so five bots cannot delete 100 HP in one frame or one second. */
+export const PLAYER_HURT_PER_TICK = 20;
+export const PLAYER_HURT_PER_SECOND = 28;
 
 export function takePlayerHurt(budget: number, incoming: number): { take: number; budget: number } {
   const take = Math.min(incoming, Math.max(0, budget));

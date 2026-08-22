@@ -172,6 +172,16 @@ h1 {
   color: var(--dim);
 }
 
+#spawn-prot {
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #111;
+  background: #ffe45a;
+}
+
 #killfeed {
   position: fixed;
   top: 18px;
