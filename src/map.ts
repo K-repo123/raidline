@@ -281,8 +281,8 @@ export function ashpierWaypoints(): Waypoint[] {
     { id: "cutR", x: 9, z: -16, links: ["yard", "raidR", "bAlley", "midR"], area: "yard" },
     { id: "midIn", x: 0, z: -6, links: ["mid", "midL", "midR"], area: "mid" },
     { id: "mid", x: 0, z: 6, links: ["midIn", "midL", "midR"], area: "mid" },
-    { id: "midL", x: -9, z: 14, links: ["mid", "midIn", "midOut", "cutL", "aDoor"], area: "mid" },
-    { id: "midR", x: 9, z: 14, links: ["mid", "midIn", "midOut", "cutR", "bDoor"], area: "mid" },
+    { id: "midL", x: -9, z: 14, links: ["mid", "midIn", "midOut", "cutL", "aDoor", "lineL"], area: "mid" },
+    { id: "midR", x: 9, z: 14, links: ["mid", "midIn", "midOut", "cutR", "bDoor", "lineR"], area: "mid" },
     { id: "midOut", x: 0, z: 20, links: ["midL", "midR", "aDoor", "bDoor", "lineL", "lineR"], area: "mid" },
     { id: "aAlley", x: -22, z: -12, links: ["raidL", "yard", "cutL", "aSite"], area: "a" },
     { id: "aSite", x: -23, z: 18, links: ["aAlley", "aDoor"], area: "a" },
@@ -290,8 +290,8 @@ export function ashpierWaypoints(): Waypoint[] {
     { id: "bAlley", x: 20, z: -12, links: ["raidR", "yard", "cutR", "bSite"], area: "b" },
     { id: "bSite", x: 24, z: 16, links: ["bAlley", "bDoor"], area: "b" },
     { id: "bDoor", x: 14, z: 20, links: ["bSite", "midOut", "midR"], area: "b" },
-    { id: "lineL", x: -9, z: 32, links: ["line", "midOut", "aDoor"], area: "spawn" },
-    { id: "lineR", x: 9, z: 32, links: ["line", "midOut", "bDoor"], area: "spawn" },
+    { id: "lineL", x: -9, z: 32, links: ["line", "midOut", "aDoor", "midL"], area: "spawn" },
+    { id: "lineR", x: 9, z: 32, links: ["line", "midOut", "bDoor", "midR"], area: "spawn" },
     { id: "line", x: 0, z: 40, links: ["lineL", "lineR"], area: "spawn" },
   ];
 }

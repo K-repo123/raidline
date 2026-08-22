@@ -19,6 +19,7 @@ describe("economy and weapons", () => {
     assert.ok(BOT.react >= 0.65);
     assert.ok(BOT.turnEnemy < 2.2);
     assert.ok(BOT.cone > 1.5);
+    assert.ok(BOT.spreadExtra >= 0.015);
   });
 
   it("opening buy cannot afford a rifle", () => {

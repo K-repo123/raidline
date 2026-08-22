@@ -88,6 +88,11 @@ describe("hunt peek", () => {
     assert.notEqual(huntPeekGoal(-31, 6), "raid");
   });
 
+  it("keeps the LINE side lane to midL off cover", () => {
+    const t = segmentHitsBoxes(-9, 1.0, 32, -9, 1.0, 14, spawnCoverBoxes());
+    assert.ok(t >= 0.99, `lineL→midL hits cover t=${t}`);
+  });
+
   it("keeps the LINE-to-cutL peek path off cover", () => {
     const pts = ashpierWaypoints();
     const cover = spawnCoverBoxes();

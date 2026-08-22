@@ -36,8 +36,9 @@ export const BOT = {
   turnPitch: 1.5,
   react: 0.72,
   fireAim: 0.26,
-  extraCooldown: 0.2,
-  cone: 1.85,
+  extraCooldown: 0.32,
+  cone: 2.2,
+  spreadExtra: 0.02,
 } as const;
 
 export const MOVE = {

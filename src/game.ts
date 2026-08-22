@@ -862,7 +862,11 @@ export class Raidline {
     } else if (enemy && a.hp < 28) {
       tx = a.x - Math.sin(a.yaw) * 4;
       tz = a.z - Math.cos(a.yaw) * 4;
-    } else if (enemy && this.liveElapsed >= MATCH.spawnProt) {
+    } else if (
+      enemy &&
+      this.liveElapsed >= MATCH.spawnProt &&
+      Math.hypot(enemy.x - a.x, enemy.z - a.z) < 16
+    ) {
       tx = enemy.x;
       tz = enemy.z;
     } else {
@@ -903,7 +907,8 @@ export class Raidline {
       a.fireHold = false;
     }
 
-    const holdPeek = !!enemy && a.team !== this.player.team && this.player.z < -8 && a.aimT > 0.5;
+    const holdPeek =
+      !!enemy && a.team !== this.player.team && this.player.z < -8 && a.z < -10 && a.aimT > 0.5;
     const fight = !!enemy && ((a.fireHold && dist < 32) || holdPeek);
     const wishF = fight ? 0 : dist > 0.7 ? 1 : 0;
     a.walk = !!enemy && dist < 5;
@@ -956,7 +961,10 @@ export class Raidline {
   }
 
   botGoal(a: Actor): string {
-    if (this.phase === "freeze") return a.team === TEAM.RAID ? "raid" : "line";
+    if (this.phase === "freeze") {
+      if (a.team === TEAM.RAID) return a.id % 2 === 0 ? "raidL" : "raidR";
+      return a.id % 2 === 0 ? "lineL" : "lineR";
+    }
     if (a.hasBomb) return a.id % 2 === 0 ? "aSite" : "bSite";
     if (this.bombArmed && this.bombSite) return this.bombSite.id === "A" ? "aSite" : "bSite";
     if (a.team !== this.player.team && this.player.alive) {
@@ -964,7 +972,7 @@ export class Raidline {
       if (peek) return peek;
       return nearestWaypoint(this.map.waypoints, this.player.x, this.player.z).id;
     }
-    return a.id % 2 === 0 ? "cutL" : "aSite";
+    return a.id % 2 === 0 ? "aSite" : "bSite";
   }
 
   stepToward(from: Waypoint, goalId: string): Waypoint {
@@ -1148,7 +1156,8 @@ export class Raidline {
     const spread =
       w.def.category === "melee"
         ? 0
-        : (shotCone(w.def.spreadStand, w.def.spreadMove, move, still) + Math.abs(spray.x) * 0.25) * ads * botTight;
+        : (shotCone(w.def.spreadStand, w.def.spreadMove, move, still) + Math.abs(spray.x) * 0.25) * ads * botTight +
+          (a.bot ? BOT.spreadExtra : 0);
     for (let p = 0; p < w.def.pellets; p++) {
       const yaw = a.yaw + spray.x + (Math.random() - 0.5) * spread * 2;
       const pitch = a.pitch + spray.y + (Math.random() - 0.5) * spread * 2;
