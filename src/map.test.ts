@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ashpierWaypoints, spawnCoverBoxes, waypointById } from "./map";
+import { ashpierWaypoints, clampToTeamSpawn, freezeGateBoxes, huntPeekGoal, inTeamSpawn, spawnCoverBoxes, waypointById } from "./map";
 import { segmentHitsBoxes } from "./physics";
 
 describe("spawn cover", () => {
@@ -44,6 +44,72 @@ describe("spawn cover", () => {
     }
     assert.ok(prev.has("raid"), "no path from line to raid");
     const hops: string[] = ["raid"];
+    while (hops[0] !== "line") hops.unshift(prev.get(hops[0])!);
+    for (let i = 0; i < hops.length - 1; i++) {
+      const a = waypointById(pts, hops[i]);
+      const b = waypointById(pts, hops[i + 1]);
+      const t = segmentHitsBoxes(a.x, 1.0, a.z, b.x, 1.0, b.z, cover);
+      assert.ok(t >= 0.99, `${a.id}→${b.id} hits cover t=${t}`);
+    }
+  });
+});
+
+describe("fair freeze spawn", () => {
+  it("keeps RAID spawn-exit and mid outside the RAID box", () => {
+    assert.equal(inTeamSpawn(true, 0, -38), true);
+    assert.equal(inTeamSpawn(true, 0, -31), false);
+    assert.equal(inTeamSpawn(true, 0, 0), false);
+    assert.equal(inTeamSpawn(false, 0, 40), true);
+    assert.equal(inTeamSpawn(false, 0, 20), false);
+  });
+
+  it("clamps a mid run back into the spawn pad", () => {
+    const raid = clampToTeamSpawn(true, 0, -20);
+    assert.ok(raid.z <= -33.4);
+    assert.equal(inTeamSpawn(true, raid.x, raid.z), true);
+    const line = clampToTeamSpawn(false, 0, 10);
+    assert.ok(line.z >= 33.4);
+    assert.equal(inTeamSpawn(false, line.x, line.z), true);
+  });
+
+  it("closes the RAID side lane during freeze", () => {
+    const t = segmentHitsBoxes(-9, 1.0, -38, -9, 1.0, -22, freezeGateBoxes());
+    assert.ok(t < 0.99, `freeze lane still open t=${t}`);
+  });
+});
+
+describe("hunt peek", () => {
+  it("sends hunters to mid cuts instead of the RAID box", () => {
+    assert.equal(huntPeekGoal(-31, 6), "cutL");
+    assert.equal(huntPeekGoal(-31, 7), "cutR");
+    assert.equal(huntPeekGoal(-31, 8), "aAlley");
+    assert.equal(huntPeekGoal(-38, 6), "cutL");
+    assert.equal(huntPeekGoal(0, 6), null);
+    assert.notEqual(huntPeekGoal(-31, 6), "raid");
+  });
+
+  it("keeps the LINE side lane to midL off cover", () => {
+    const t = segmentHitsBoxes(-9, 1.0, 32, -9, 1.0, 14, spawnCoverBoxes());
+    assert.ok(t >= 0.99, `lineL→midL hits cover t=${t}`);
+  });
+
+  it("keeps the LINE-to-cutL peek path off cover", () => {
+    const pts = ashpierWaypoints();
+    const cover = spawnCoverBoxes();
+    const q = ["line"];
+    const prev = new Map<string, string>([["line", "line"]]);
+    while (q.length) {
+      const id = q.shift()!;
+      if (id === "cutL") break;
+      for (const n of waypointById(pts, id).links) {
+        if (!prev.has(n)) {
+          prev.set(n, id);
+          q.push(n);
+        }
+      }
+    }
+    assert.ok(prev.has("cutL"), "no path from line to cutL");
+    const hops: string[] = ["cutL"];
     while (hops[0] !== "line") hops.unshift(prev.get(hops[0])!);
     for (let i = 0; i < hops.length - 1; i++) {
       const a = waypointById(pts, hops[i]);

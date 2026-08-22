@@ -25,11 +25,24 @@ export const MATCH = {
   buyWindow: 20,
   minWipeTime: 45,
   spawnProt: 3,
-  botFireDelay: 1.5,
+  botFireDelay: 2.2,
+} as const;
+
+/** Bots share the player move cap. No sprint-blitz scale. */
+export const BOT = {
+  moveScale: 1,
+  turnEnemy: 1.65,
+  turnPath: 2.05,
+  turnPitch: 1.5,
+  react: 0.72,
+  fireAim: 0.26,
+  extraCooldown: 0.32,
+  cone: 2.2,
+  spreadExtra: 0.02,
 } as const;
 
 export const MOVE = {
-  run: 5.45,
+  run: 5.0,
   walk: 2.55,
   crouch: 1.65,
   accel: 13.4,

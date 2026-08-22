@@ -210,11 +210,23 @@ export function groundSpeed(vx: number, vz: number): number {
   return Math.hypot(vx, vz);
 }
 
+/** True after a counter-strafe dump or while standing — first shot stays tight. */
+export function stillForFirstShot(speed: number): boolean {
+  return speed < 1.15;
+}
+
 /** Rifle inaccuracy from speed — standing still is tight, walk is quiet/accurate. */
 export function moveInaccuracy(speed: number, airborne: boolean, crouch: boolean, walk = false): number {
   if (airborne) return 0.048;
-  if (walk && speed <= MOVE.walk + 0.15) return crouch ? 0.0006 : 0.0012;
-  const runPenalty = Math.max(0, speed - 1.05) * 0.013;
+  if (stillForFirstShot(speed)) return crouch ? 0.0004 : 0.0008;
+  if (walk && speed <= MOVE.walk + 0.15) return crouch ? 0.0006 : 0.0014;
+  const runPenalty = Math.max(0, speed - 0.85) * 0.018;
   const crouchBonus = crouch ? 0.55 : 1;
   return runPenalty * crouchBonus;
+}
+
+/** Final aim cone. Moving adds a clear WASD bloom; still uses stand only. */
+export function shotCone(stand: number, moveSpread: number, moveInacc: number, still: boolean): number {
+  if (still) return stand;
+  return stand + moveInacc * (moveSpread / 0.02);
 }

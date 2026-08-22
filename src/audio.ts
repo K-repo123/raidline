@@ -98,6 +98,10 @@ export class AudioEngine {
         this.noise(0.15, 0.62 * g, 140, 1600);
         this.tone(70, 0.14, "square", 0.16 * g);
         break;
+      case "bit":
+        this.noise(0.08, 0.28 * g, 200, 2200);
+        this.tone(240, 0.07, "square", 0.1 * g);
+        break;
       default:
         this.noise(0.08, 0.42 * g, 400, 3000);
     }
@@ -109,9 +113,9 @@ export class AudioEngine {
   }
 
   footstep(quiet = false, distGain = 1): void {
-    const g = (quiet ? 0.035 : 0.14) * distGain;
-    this.noise(0.05, g, 80, 520);
-    this.tone(70 + Math.random() * 20, 0.045, "sine", (quiet ? 0.014 : 0.055) * distGain);
+    const g = (quiet ? 0.1 : 0.34) * distGain;
+    this.noise(0.055, g, 70, 640);
+    this.tone(68 + Math.random() * 22, 0.05, "sine", (quiet ? 0.04 : 0.12) * distGain);
   }
 
   jump(): void {

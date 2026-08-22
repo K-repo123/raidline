@@ -5,7 +5,7 @@ export type WeaponDef = {
   name: string;
   slot: 1 | 2 | 3;
   price: number;
-  category: "pistol" | "smg" | "rifle" | "heavy";
+  category: "pistol" | "smg" | "rifle" | "heavy" | "melee";
   damage: number;
   armorPen: number;
   headMul: number;
@@ -24,7 +24,7 @@ export type WeaponDef = {
   pellets: number;
   mode: FireMode;
   killAward: number;
-  sound: "dart" | "anvil" | "stitch" | "ridge" | "quarrel" | "longline" | "hatch";
+  sound: "dart" | "anvil" | "stitch" | "ridge" | "quarrel" | "longline" | "hatch" | "bit";
 };
 
 export const WEAPONS: Record<string, WeaponDef> = {
@@ -210,6 +210,32 @@ export const WEAPONS: Record<string, WeaponDef> = {
     killAward: 900,
     sound: "hatch",
   },
+  bit: {
+    id: "bit",
+    name: "Bit",
+    slot: 3,
+    price: 0,
+    category: "melee",
+    damage: 62,
+    armorPen: 0.85,
+    headMul: 1.8,
+    rpm: 96,
+    mag: 1,
+    reserve: 0,
+    reload: 0.2,
+    moveScale: 1.08,
+    spreadStand: 0.004,
+    spreadMove: 0.01,
+    recoilY: 0.01,
+    recoilX: 0.004,
+    recovery: 12,
+    range: 2.1,
+    falloff: 0,
+    pellets: 1,
+    mode: "semi",
+    killAward: 300,
+    sound: "bit",
+  },
 };
 
 export const GEAR = {
@@ -267,6 +293,9 @@ export function sprayOffset(w: WeaponState): { x: number; y: number } {
 
 /** Camera punch the player counters by pulling the mouse down. */
 export function viewKick(def: WeaponDef, shotIndex: number): { pitch: number; yaw: number } {
+  if (def.category === "melee") {
+    return { pitch: 0.018, yaw: 0.006 };
+  }
   if (def.id === "anvil") {
     return { pitch: 0.055, yaw: (shotIndex % 2 === 0 ? -0.01 : 0.012) };
   }

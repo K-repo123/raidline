@@ -281,8 +281,8 @@ export function ashpierWaypoints(): Waypoint[] {
     { id: "cutR", x: 9, z: -16, links: ["yard", "raidR", "bAlley", "midR"], area: "yard" },
     { id: "midIn", x: 0, z: -6, links: ["mid", "midL", "midR"], area: "mid" },
     { id: "mid", x: 0, z: 6, links: ["midIn", "midL", "midR"], area: "mid" },
-    { id: "midL", x: -9, z: 14, links: ["mid", "midIn", "midOut", "cutL", "aDoor"], area: "mid" },
-    { id: "midR", x: 9, z: 14, links: ["mid", "midIn", "midOut", "cutR", "bDoor"], area: "mid" },
+    { id: "midL", x: -9, z: 14, links: ["mid", "midIn", "midOut", "cutL", "aDoor", "lineL"], area: "mid" },
+    { id: "midR", x: 9, z: 14, links: ["mid", "midIn", "midOut", "cutR", "bDoor", "lineR"], area: "mid" },
     { id: "midOut", x: 0, z: 20, links: ["midL", "midR", "aDoor", "bDoor", "lineL", "lineR"], area: "mid" },
     { id: "aAlley", x: -22, z: -12, links: ["raidL", "yard", "cutL", "aSite"], area: "a" },
     { id: "aSite", x: -23, z: 18, links: ["aAlley", "aDoor"], area: "a" },
@@ -290,8 +290,8 @@ export function ashpierWaypoints(): Waypoint[] {
     { id: "bAlley", x: 20, z: -12, links: ["raidR", "yard", "cutR", "bSite"], area: "b" },
     { id: "bSite", x: 24, z: 16, links: ["bAlley", "bDoor"], area: "b" },
     { id: "bDoor", x: 14, z: 20, links: ["bSite", "midOut", "midR"], area: "b" },
-    { id: "lineL", x: -9, z: 32, links: ["line", "midOut", "aDoor"], area: "spawn" },
-    { id: "lineR", x: 9, z: 32, links: ["line", "midOut", "bDoor"], area: "spawn" },
+    { id: "lineL", x: -9, z: 32, links: ["line", "midOut", "aDoor", "midL"], area: "spawn" },
+    { id: "lineR", x: 9, z: 32, links: ["line", "midOut", "bDoor", "midR"], area: "spawn" },
     { id: "line", x: 0, z: 40, links: ["lineL", "lineR"], area: "spawn" },
   ];
 }
@@ -318,4 +318,39 @@ export function nearestWaypoint(points: Waypoint[], x: number, z: number): Waypo
 
 export function waypointById(points: Waypoint[], id: string): Waypoint {
   return points.find((p) => p.id === id) ?? points[0];
+}
+
+/** LINE hunters peek mid/A instead of pathing into the RAID box. */
+export function huntPeekGoal(playerZ: number, botId: number): string | null {
+  if (playerZ >= -18) return null;
+  return botId % 3 === 0 ? "cutL" : botId % 3 === 1 ? "cutR" : "aAlley";
+}
+
+/** RAID / LINE pads behind the spawn lips. Side walk-arounds are outside. */
+export function teamSpawnBounds(raid: boolean): { minX: number; maxX: number; minZ: number; maxZ: number } {
+  if (raid) return { minX: -7.6, maxX: 7.6, minZ: -46, maxZ: -33.45 };
+  return { minX: -7.6, maxX: 7.6, minZ: 33.45, maxZ: 48 };
+}
+
+export function inTeamSpawn(raid: boolean, x: number, z: number): boolean {
+  const b = teamSpawnBounds(raid);
+  return x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ;
+}
+
+export function clampToTeamSpawn(raid: boolean, x: number, z: number): { x: number; z: number } {
+  const b = teamSpawnBounds(raid);
+  return {
+    x: Math.max(b.minX, Math.min(b.maxX, x)),
+    z: Math.max(b.minZ, Math.min(b.maxZ, z)),
+  };
+}
+
+/** Extra lips on the side lanes so freeze cannot leak onto mid. */
+export function freezeGateBoxes(): AABB[] {
+  return [
+    box(-8.6, 0, -33, 5.2, 3.6, 1.5),
+    box(8.6, 0, -33, 5.2, 3.6, 1.5),
+    box(-8.6, 0, 33, 5.2, 3.6, 1.5),
+    box(8.6, 0, 33, 5.2, 3.6, 1.5),
+  ];
 }
