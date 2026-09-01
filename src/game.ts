@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { AudioEngine } from "./audio";
-import { BOT, COLORS, MATCH, MOVE, TEAM, type Team } from "./config";
+import { BOT, COLORS, MATCH, MOVE, TEAM, VIEWMODEL_REST, type Team } from "./config";
 import {
   buildAshpier,
   huntPeekGoal,
@@ -160,6 +160,7 @@ export class Raidline {
   spawnProtT = 0;
   gunPunch = 0;
   lastArmed: "primary" | "pistol" | "melee" = "pistol";
+  enemyBody: THREE.Object3D | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -176,6 +177,7 @@ export class Raidline {
     this.buildViewmodel();
     this.map = buildAshpier();
     this.scene.add(this.map.visuals);
+    this.loadAshpierEnemy();
     this.light();
     this.bind();
     this.resetMatch();
@@ -1484,13 +1486,13 @@ export class Raidline {
     const dip = w.reloading > 0 ? 0.08 + Math.sin(rel * Math.PI) * 0.05 : 0;
     const punch = this.gunPunch;
     this.viewmodel.position.set(
-      0.055 + Math.sin(this.bob) * 0.008 + punch * 0.002,
-      -0.118 + Math.abs(Math.sin(this.bob * 2)) * 0.006 - holster - dip - punch * 0.007,
-      0.045 + punch * 0.008,
+      VIEWMODEL_REST.x + Math.sin(this.bob) * 0.008 + punch * 0.002,
+      VIEWMODEL_REST.y + Math.abs(Math.sin(this.bob * 2)) * 0.006 - holster - dip - punch * 0.007,
+      VIEWMODEL_REST.z + punch * 0.008,
     );
-    this.viewmodel.rotation.x = (w.reloading > 0 ? 0.72 + Math.sin(rel * 14) * 0.16 : 0.14) - punch * 0.05;
-    this.viewmodel.rotation.y = -0.06;
-    this.viewmodel.rotation.z = (w.reloading > 0 ? Math.sin(rel * 10) * 0.28 : -0.16) + punch * 0.02;
+    this.viewmodel.rotation.x = (w.reloading > 0 ? 0.72 + Math.sin(rel * 14) * 0.16 : VIEWMODEL_REST.rx) - punch * 0.05;
+    this.viewmodel.rotation.y = VIEWMODEL_REST.ry;
+    this.viewmodel.rotation.z = (w.reloading > 0 ? Math.sin(rel * 10) * 0.28 : VIEWMODEL_REST.rz) + punch * 0.02;
   }
 
   orbitMenu(dt: number): void {
@@ -1500,6 +1502,60 @@ export class Raidline {
     this.camera.lookAt(0, 1, 4);
   }
 
+  loadAshpierEnemy(): void {
+    const url = `${import.meta.env.BASE_URL}models/ashpier-enemy.glb`;
+    new GLTFLoader().load(
+      url,
+      (gltf) => {
+        this.enemyBody = gltf.scene;
+        this.syncMeshes();
+      },
+      undefined,
+      () => {
+        /* file late or missing — keep playing without a capsule stand-in */
+      },
+    );
+  }
+
+  tintEnemy(root: THREE.Object3D, color: number): void {
+    let tinted = false;
+    const paint = (mat: THREE.Material): THREE.Material => {
+      if (mat.name !== "TeamTint" && mat.name !== "Body") return mat;
+      const copy = mat.clone() as THREE.MeshStandardMaterial;
+      if ("color" in copy) copy.color.setHex(color);
+      if ("emissive" in copy) {
+        copy.emissive.setHex(color);
+        copy.emissiveIntensity = 0.18;
+      }
+      tinted = true;
+      return copy;
+    };
+    root.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(paint);
+      else mesh.material = paint(mesh.material);
+    });
+    if (tinted) return;
+    root.traverse((obj) => {
+      if (tinted) return;
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh || mesh.name !== "Body") return;
+      const src = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      const copy = src.clone() as THREE.MeshStandardMaterial;
+      if ("color" in copy) copy.color.setHex(color);
+      if ("emissive" in copy) {
+        copy.emissive.setHex(color);
+        copy.emissiveIntensity = 0.18;
+      }
+      if (Array.isArray(mesh.material)) mesh.material = [copy, ...mesh.material.slice(1)];
+      else mesh.material = copy;
+      tinted = true;
+    });
+  }
+
   syncMeshes(): void {
     for (const [, g] of this.meshes) this.scene.remove(g);
     this.meshes.clear();
@@ -1507,23 +1563,11 @@ export class Raidline {
       if (a === this.player) continue;
       const g = new THREE.Group();
       const color = a.team === TEAM.RAID ? COLORS.raid : COLORS.line;
-      const body = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.34, 0.78, 5, 10),
-        new THREE.MeshStandardMaterial({ color, roughness: 0.45, emissive: color, emissiveIntensity: 0.18 }),
-      );
-      body.position.y = 0.94;
-      body.castShadow = true;
-      const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 12, 10),
-        new THREE.MeshStandardMaterial({ color: 0xf0d2b0, roughness: 0.65 }),
-      );
-      head.position.y = 1.58;
-      head.castShadow = true;
-      const pack = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34, 0.22, 0.16),
-        new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 }),
-      );
-      pack.position.set(0, 1.05, -0.22);
+      if (this.enemyBody) {
+        const body = this.enemyBody.clone(true);
+        this.tintEnemy(body, color);
+        g.add(body);
+      }
       const c = document.createElement("canvas");
       c.width = 256;
       c.height = 64;
@@ -1535,7 +1579,7 @@ export class Raidline {
       const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
       spr.position.y = 2.05;
       spr.scale.set(1.6, 0.4, 1);
-      g.add(body, head, pack, spr);
+      g.add(spr);
       this.scene.add(g);
       this.meshes.set(a.id, g);
     }

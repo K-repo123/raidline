@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ashpierWaypoints, huntPeekGoal, spawnCoverBoxes, waypointById } from "./map";
+import { VIEWMODEL_REST } from "./config";
+import { ashpierWallSpecs, ashpierWaypoints, huntPeekGoal, spawnCoverBoxes, waypointById } from "./map";
 import { segmentHitsBoxes } from "./physics";
 
 describe("spawn cover", () => {
@@ -93,5 +94,49 @@ describe("hunt peek", () => {
       const t = segmentHitsBoxes(a.x, 1.0, a.z, b.x, 1.0, b.z, cover);
       assert.ok(t >= 0.99, `${a.id}→${b.id} hits cover t=${t}`);
     }
+  });
+});
+
+describe("ashpier collision lock", () => {
+  it("keeps the same AABB count and spawn-cover solids", () => {
+    const walls = ashpierWallSpecs();
+    assert.equal(walls.length, 48);
+    for (const cover of spawnCoverBoxes()) {
+      const hit = walls.some(
+        (w) =>
+          w.aabb.minX === cover.minX &&
+          w.aabb.maxX === cover.maxX &&
+          w.aabb.minY === cover.minY &&
+          w.aabb.maxY === cover.maxY &&
+          w.aabb.minZ === cover.minZ &&
+          w.aabb.maxZ === cover.maxZ &&
+          w.aabb.solid,
+      );
+      assert.ok(hit, `missing cover ${cover.minX},${cover.minZ}`);
+    }
+  });
+
+  it("keeps RAID warehouse boxes and does not add a shed AABB", () => {
+    const walls = ashpierWallSpecs();
+    assert.ok(walls.some((w) => w.aabb.minX === -14.5 && w.aabb.maxX === -13.5 && w.aabb.minZ === -45 && w.aabb.maxZ === -35));
+    assert.ok(walls.some((w) => w.aabb.minX === 13.5 && w.aabb.maxX === 14.5 && w.aabb.minZ === -45 && w.aabb.maxZ === -35));
+    assert.ok(walls.some((w) => w.aabb.minX === -14 && w.aabb.maxX === 14 && w.aabb.minZ === -45.5 && w.aabb.maxZ === -44.5));
+    assert.equal(
+      walls.filter((w) => w.aabb.minX === -14.51 || w.aabb.maxX === 14.51).length,
+      0,
+    );
+  });
+});
+
+describe("viewmodel rest", () => {
+  it("tucks Ridge-15 to the CS-style lower-right rest pose", () => {
+    assert.deepEqual(
+      { x: VIEWMODEL_REST.x, y: VIEWMODEL_REST.y, z: VIEWMODEL_REST.z },
+      { x: 0.22, y: -0.26, z: 0.06 },
+    );
+    assert.deepEqual(
+      { rx: VIEWMODEL_REST.rx, ry: VIEWMODEL_REST.ry, rz: VIEWMODEL_REST.rz },
+      { rx: 0.22, ry: -0.18, rz: -0.28 },
+    );
   });
 });

@@ -67,3 +67,13 @@ export const COLORS = {
   siteA: 0xd4a017,
   siteB: 0x2aa8d4,
 } as const;
+
+/** First-person Ridge-15 rest pose. Bob / punch / reload add on top. */
+export const VIEWMODEL_REST = {
+  x: 0.22,
+  y: -0.26,
+  z: 0.06,
+  rx: 0.22,
+  ry: -0.18,
+  rz: -0.28,
+} as const;
