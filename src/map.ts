@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { COLORS } from "./config";
 
 export type AABB = {
@@ -47,78 +48,173 @@ function box(x: number, y: number, z: number, sx: number, sy: number, sz: number
   };
 }
 
-function meshBox(
-  group: THREE.Group,
-  aabb: AABB,
-  color: number,
-  roughness = 0.82,
-  metalness = 0.08,
-  emissive = 0,
-): void {
-  const sx = aabb.maxX - aabb.minX;
-  const sy = aabb.maxY - aabb.minY;
-  const sz = aabb.maxZ - aabb.minZ;
-  const geo = new THREE.BoxGeometry(sx, sy, sz);
-  const mat = new THREE.MeshStandardMaterial({
-    color,
-    roughness,
-    metalness,
-    emissive,
-    emissiveIntensity: emissive ? 0.35 : 0,
-  });
-  const m = new THREE.Mesh(geo, mat);
-  m.position.set((aabb.minX + aabb.maxX) / 2, (aabb.minY + aabb.maxY) / 2, (aabb.minZ + aabb.maxZ) / 2);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  group.add(m);
+export type WallVisual = { aabb: AABB; color: number };
+
+const FLOOR_W = 120;
+const FLOOR_D = 130;
+const FLOOR_TILE = 4;
+
+function modelUrl(name: string): string {
+  return `${import.meta.env.BASE_URL}models/${name}`;
 }
 
-function floorTex(): THREE.CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 512;
-  const g = c.getContext("2d")!;
-  g.fillStyle = "#3a3d3c";
-  g.fillRect(0, 0, 512, 512);
-  g.strokeStyle = "rgba(220, 210, 180, 0.16)";
-  g.lineWidth = 2;
-  for (let i = 0; i <= 512; i += 64) {
-    g.beginPath();
-    g.moveTo(i, 0);
-    g.lineTo(i, 512);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(0, i);
-    g.lineTo(512, i);
-    g.stroke();
-  }
-  g.fillStyle = "rgba(0,0,0,0.12)";
-  for (let i = 0; i < 80; i++) {
-    g.fillRect(Math.random() * 512, Math.random() * 512, 8, 8);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(18, 20);
-  t.anisotropy = 8;
-  return t;
+function loadGltf(name: string, onLoad: (root: THREE.Group) => void): void {
+  new GLTFLoader().load(modelUrl(name), (gltf) => onLoad(gltf.scene), undefined, () => {
+    /* file late or missing — keep collision and play without the visual */
+  });
+}
+
+function eachMesh(root: THREE.Object3D, fn: (mesh: THREE.Mesh) => void): void {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh) fn(mesh);
+  });
+}
+
+function placeFloorTiles(group: THREE.Group, proto: THREE.Object3D): void {
+  const nx = Math.ceil(FLOOR_W / FLOOR_TILE);
+  const nz = Math.ceil(FLOOR_D / FLOOR_TILE);
+  const x0 = -((nx * FLOOR_TILE) / 2) + FLOOR_TILE / 2;
+  const z0 = -((nz * FLOOR_TILE) / 2) + FLOOR_TILE / 2;
+  const count = nx * nz;
+  proto.updateMatrixWorld(true);
+  eachMesh(proto, (src) => {
+    const inst = new THREE.InstancedMesh(src.geometry, src.material, count);
+    inst.receiveShadow = true;
+    inst.castShadow = false;
+    inst.frustumCulled = false;
+    const dummy = new THREE.Object3D();
+    let i = 0;
+    for (let ix = 0; ix < nx; ix++) {
+      for (let iz = 0; iz < nz; iz++) {
+        dummy.position.set(x0 + ix * FLOOR_TILE, 0, z0 + iz * FLOOR_TILE);
+        dummy.quaternion.identity();
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        inst.setMatrixAt(i++, dummy.matrix.clone().multiply(src.matrixWorld));
+      }
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    group.add(inst);
+  });
+}
+
+function placeWallPanels(group: THREE.Group, proto: THREE.Object3D, walls: WallVisual[]): void {
+  proto.updateMatrixWorld(true);
+  eachMesh(proto, (src) => {
+    const mat = (src.material as THREE.Material).clone() as THREE.MeshStandardMaterial;
+    if (mat.color) mat.color.setHex(0xffffff);
+    const inst = new THREE.InstancedMesh(src.geometry, mat, walls.length);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    inst.frustumCulled = false;
+    const dummy = new THREE.Object3D();
+    walls.forEach((wall, i) => {
+      dummy.position.set(
+        (wall.aabb.minX + wall.aabb.maxX) / 2,
+        (wall.aabb.minY + wall.aabb.maxY) / 2,
+        (wall.aabb.minZ + wall.aabb.maxZ) / 2,
+      );
+      dummy.scale.set(wall.aabb.maxX - wall.aabb.minX, wall.aabb.maxY - wall.aabb.minY, wall.aabb.maxZ - wall.aabb.minZ);
+      dummy.quaternion.identity();
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix.clone().multiply(src.matrixWorld));
+      inst.setColorAt(i, new THREE.Color(wall.color));
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    group.add(inst);
+  });
+}
+
+function mountAshpierVisuals(group: THREE.Group, walls: WallVisual[]): void {
+  loadGltf("ashpier-floor.glb", (root) => placeFloorTiles(group, root));
+  loadGltf("ashpier-wall.glb", (root) => placeWallPanels(group, root, walls));
+  loadGltf("ashpier-shed.glb", (root) => {
+    root.position.set(0, 0, -40);
+    eachMesh(root, (mesh) => {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
+    group.add(root);
+  });
+}
+
+/** Collision AABBs + the hex each wall panel is tinted with. Visual load does not change this list. */
+export function ashpierWallSpecs(): WallVisual[] {
+  const walls: WallVisual[] = [];
+  const add = (aabb: AABB, color: number) => {
+    walls.push({ aabb, color });
+  };
+
+  const wallH = 4.2;
+  const concrete = 0xb9b2a4;
+  const dark = 0x4a463e;
+  const rust = 0xa45a32;
+  const teal = 0x2d6f6a;
+  const amber = 0xc9a227;
+  const steel = 0x6e7680;
+
+  add(box(0, 0, -48, 88, wallH, 1.2), concrete);
+  add(box(0, 0, 50, 88, wallH, 1.2), concrete);
+  add(box(-44, 0, 1, 1.2, wallH, 98), concrete);
+  add(box(36, 0, 1, 1.2, wallH, 98), teal);
+
+  add(box(-14, 0, -40, 1, 3.2, 10), rust);
+  add(box(14, 0, -40, 1, 3.2, 10), rust);
+  add(box(0, 0, -45, 28, 3.2, 1), rust);
+  add(box(-10, 0, -36, 4, 1.1, 2.2), dark);
+  add(box(10, 0, -36, 4, 1.1, 2.2), dark);
+
+  add(box(-16, 0, 44, 1, 3.4, 10), teal);
+  add(box(16, 0, 44, 1, 3.4, 10), teal);
+  add(box(0, 0, 48, 32, 3.4, 1), teal);
+  add(box(-8, 0, 40, 5, 1.2, 2.4), steel);
+  add(box(8, 0, 40, 5, 1.2, 2.4), steel);
+
+  add(box(-6.5, 0, 2, 1.1, 3.6, 22), concrete);
+  add(box(6.5, 0, 2, 1.1, 3.6, 22), concrete);
+  add(box(-5.4, 0, 14, 5.2, 2.8, 1.1), dark);
+  add(box(5.4, 0, 14, 5.2, 2.8, 1.1), dark);
+  add(box(0, 0, 2, 3.2, 0.55, 8), amber);
+  for (const cover of spawnCoverBoxes()) add(cover, cover.maxZ < 0 ? rust : cover.minZ > 20 ? teal : dark);
+
+  add(box(-32, 0, 18, 1.1, 4, 20), 0xc4b496);
+  add(box(-14, 0, 18, 1.1, 4, 12), 0xc4b496);
+  add(box(-23, 0, 28, 18, 4, 1.1), 0xc4b496);
+  add(box(-30, 0, 8, 8, 4, 1.1), 0xc4b496);
+  add(box(-16, 0, 8, 6, 4, 1.1), 0xc4b496);
+  add(box(-26, 0, 20, 3.4, 1.4, 3.4), amber);
+  add(box(-20, 0, 16, 2.4, 2.2, 2.4), rust);
+  add(box(-34, 0, 22, 3, 2.6, 5), dark);
+  add(box(-14, 0, 22, 0.5, 1.1, 4), steel);
+
+  add(box(22, 0, 10, 6.5, 2.8, 3.2), COLORS.siteB);
+  add(box(28, 0, 18, 6.5, 2.8, 3.2), 0x1f6b74);
+  add(box(18, 0, 22, 4.2, 2.8, 6.5), 0x245c62);
+  add(box(30, 0, 28, 5, 1.2, 5), steel);
+  add(box(14, 0, 12, 1.1, 3.4, 14), teal);
+  add(box(24, 0, 32, 16, 3.4, 1.1), teal);
+  add(box(32, 0, 8, 1.1, 3.2, 10), steel);
+
+  add(box(-18, 0, -8, 3.2, 1.6, 3.2), rust);
+  add(box(16, 0, -6, 3.2, 1.6, 3.2), teal);
+  add(box(-10, 0, -20, 2.6, 1.3, 2.6), dark);
+  add(box(10, 0, -20, 2.6, 1.3, 2.6), dark);
+  add(box(0, 0, -26, 5, 1.15, 2.2), steel);
+  add(box(-24, 0, -16, 4, 2.2, 2.2), rust);
+  add(box(22, 0, -16, 4, 2.2, 2.2), 0x2a6a72);
+
+  add(box(-22, 0, -2, 10, 2.4, 1.1), concrete);
+  add(box(20, 0, -2, 10, 2.4, 1.1), concrete);
+
+  return walls;
 }
 
 /** Ashpier — original coastal freight yard. Not a Valve map. */
 export function buildAshpier(): MapData {
-  const solids: AABB[] = [];
+  const walls = ashpierWallSpecs();
   const visuals = new THREE.Group();
-  const add = (aabb: AABB, color: number, extra?: { r?: number; m?: number; e?: number }) => {
-    solids.push(aabb);
-    meshBox(visuals, aabb, color, extra?.r, extra?.m, extra?.e);
-  };
-
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(120, 130),
-    new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.95, metalness: 0.02, color: 0xc8c4b8 }),
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  visuals.add(floor);
 
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry(40, 130),
@@ -133,76 +229,6 @@ export function buildAshpier(): MapData {
   water.rotation.x = -Math.PI / 2;
   water.position.set(48, -0.15, 0);
   visuals.add(water);
-
-  // Perimeter — high-contrast concrete
-  const wallH = 4.2;
-  const concrete = 0xb9b2a4;
-  const dark = 0x4a463e;
-  const rust = 0xa45a32;
-  const teal = 0x2d6f6a;
-  const amber = 0xc9a227;
-  const steel = 0x6e7680;
-
-  add(box(0, 0, -48, 88, wallH, 1.2), concrete);
-  add(box(0, 0, 50, 88, wallH, 1.2), concrete);
-  add(box(-44, 0, 1, 1.2, wallH, 98), concrete);
-  add(box(36, 0, 1, 1.2, wallH, 98), teal);
-
-  // RAID spawn shed
-  add(box(-14, 0, -40, 1, 3.2, 10), rust);
-  add(box(14, 0, -40, 1, 3.2, 10), rust);
-  add(box(0, 0, -45, 28, 3.2, 1), rust);
-  add(box(-10, 0, -36, 4, 1.1, 2.2), dark);
-  add(box(10, 0, -36, 4, 1.1, 2.2), dark);
-
-  // LINE spawn hall
-  add(box(-16, 0, 44, 1, 3.4, 10), teal);
-  add(box(16, 0, 44, 1, 3.4, 10), teal);
-  add(box(0, 0, 48, 32, 3.4, 1), teal);
-  add(box(-8, 0, 40, 5, 1.2, 2.4), steel);
-  add(box(8, 0, 40, 5, 1.2, 2.4), steel);
-
-  // Mid — two-lane freight cut with a raised spine
-  add(box(-6.5, 0, 2, 1.1, 3.6, 22), concrete);
-  add(box(6.5, 0, 2, 1.1, 3.6, 22), concrete);
-  add(box(-5.4, 0, 14, 5.2, 2.8, 1.1), dark);
-  add(box(5.4, 0, 14, 5.2, 2.8, 1.1), dark);
-  add(box(0, 0, 2, 3.2, 0.55, 8), amber);
-  for (const cover of spawnCoverBoxes()) add(cover, cover.maxZ < 0 ? rust : cover.minZ > 20 ? teal : dark);
-
-  // A Vault — warm warehouse, readable amber trim
-  add(box(-32, 0, 18, 1.1, 4, 20), 0xc4b496);
-  add(box(-14, 0, 18, 1.1, 4, 12), 0xc4b496);
-  add(box(-23, 0, 28, 18, 4, 1.1), 0xc4b496);
-  add(box(-30, 0, 8, 8, 4, 1.1), 0xc4b496);
-  add(box(-16, 0, 8, 6, 4, 1.1), 0xc4b496);
-  add(box(-26, 0, 20, 3.4, 1.4, 3.4), amber);
-  add(box(-20, 0, 16, 2.4, 2.2, 2.4), rust);
-  add(box(-34, 0, 22, 3, 2.6, 5), dark);
-  // A window slit (low cover, not a full wall)
-  add(box(-14, 0, 22, 0.5, 1.1, 4), steel);
-
-  // B Quay — cool containers + crane foot
-  add(box(22, 0, 10, 6.5, 2.8, 3.2), COLORS.siteB);
-  add(box(28, 0, 18, 6.5, 2.8, 3.2), 0x1f6b74);
-  add(box(18, 0, 22, 4.2, 2.8, 6.5), 0x245c62);
-  add(box(30, 0, 28, 5, 1.2, 5), steel);
-  add(box(14, 0, 12, 1.1, 3.4, 14), teal);
-  add(box(24, 0, 32, 16, 3.4, 1.1), teal);
-  add(box(32, 0, 8, 1.1, 3.2, 10), steel);
-
-  // Yard crates — mid control
-  add(box(-18, 0, -8, 3.2, 1.6, 3.2), rust);
-  add(box(16, 0, -6, 3.2, 1.6, 3.2), teal);
-  add(box(-10, 0, -20, 2.6, 1.3, 2.6), dark);
-  add(box(10, 0, -20, 2.6, 1.3, 2.6), dark);
-  add(box(0, 0, -26, 5, 1.15, 2.2), steel);
-  add(box(-24, 0, -16, 4, 2.2, 2.2), rust);
-  add(box(22, 0, -16, 4, 2.2, 2.2), 0x2a6a72);
-
-  // Connector elbows
-  add(box(-22, 0, -2, 10, 2.4, 1.1), concrete);
-  add(box(20, 0, -2, 10, 2.4, 1.1), concrete);
 
   // Site pads (not solid to players — visual + bomb volume)
   const aPad = new THREE.Mesh(
@@ -255,6 +281,8 @@ export function buildAshpier(): MapData {
   ];
 
   const waypoints = ashpierWaypoints();
+  const solids = walls.map((w) => w.aabb);
+  mountAshpierVisuals(visuals, walls);
 
   return {
     solids,

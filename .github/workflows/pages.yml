@@ -2,7 +2,7 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [main, cursor/raidline-cs-feel-pages-df5b, cursor/fix-title-start-51a8, cursor/fix-strafe-sign-51a8, cursor/fix-play-bugs-51a8, cursor/cs-feel-combat-51a8, cursor/cs-feel-radar-fx-51a8, cursor/cs-feel-lock-hurt-51a8, cursor/fix-live-hp-51a8, cursor/fix-spawn-prot-51a8, cursor/fix-spawn-los-51a8, cursor/fix-bot-hunt-51a8, cursor/fix-radar-recoil-51a8, cursor/fix-cs-core-51a8, cursor/tune-gunplay-51a8, cursor/unfreeze-kv-51a8, cursor/ridge-15-viewmodel-ff82]
+    branches: [main, cursor/raidline-cs-feel-pages-df5b, cursor/fix-title-start-51a8, cursor/fix-strafe-sign-51a8, cursor/fix-play-bugs-51a8, cursor/cs-feel-combat-51a8, cursor/cs-feel-radar-fx-51a8, cursor/cs-feel-lock-hurt-51a8, cursor/fix-live-hp-51a8, cursor/fix-spawn-prot-51a8, cursor/fix-spawn-los-51a8, cursor/fix-bot-hunt-51a8, cursor/fix-radar-recoil-51a8, cursor/fix-cs-core-51a8, cursor/tune-gunplay-51a8, cursor/unfreeze-kv-51a8, cursor/ridge-15-viewmodel-ff82, cursor/ashpier-world-assets-ea25]
   workflow_dispatch:
 
 permissions:
