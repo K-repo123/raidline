@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { AudioEngine } from "./audio";
 import { BOT, COLORS, MATCH, MOVE, TEAM, type Team } from "./config";
 import {
@@ -1409,15 +1410,6 @@ export class Raidline {
     this.knifeRoot.clear();
     const steel = new THREE.MeshStandardMaterial({ color: 0x5a5e62, metalness: 0.45, roughness: 0.4 });
     const grip = new THREE.MeshStandardMaterial({ color: 0x4a3428, roughness: 0.8 });
-    const accent = new THREE.MeshStandardMaterial({ color: 0xc45a2a, roughness: 0.4, metalness: 0.2 });
-    const rec = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.02, 0.068), steel);
-    rec.position.set(0.122, -0.112, -0.255);
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.007, 0.052), steel);
-    bar.position.set(0.122, -0.104, -0.3);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.024, 0.016), grip);
-    mag.position.set(0.122, -0.13, -0.242);
-    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.007, 0.014), accent);
-    sight.position.set(0.122, -0.098, -0.268);
     this.muzzle = new THREE.PointLight(0xffcc66, 0, 4.5, 2);
     this.muzzle.position.set(0.122, -0.104, -0.335);
     this.muzzleSprite = new THREE.Mesh(
@@ -1426,10 +1418,9 @@ export class Raidline {
     );
     this.muzzleSprite.position.set(0.122, -0.104, -0.34);
     this.muzzleSprite.renderOrder = 10;
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.016, 0.042), grip);
-    stock.position.set(0.118, -0.118, -0.205);
-    this.gunRoot.add(rec, bar, mag, sight, stock, this.muzzle, this.muzzleSprite);
+    this.gunRoot.add(this.muzzle, this.muzzleSprite);
     this.gunRoot.scale.set(0.78, 0.78, 0.78);
+    this.loadRidge15();
     const blade = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.01, 0.092), steel);
     blade.position.set(0.12, -0.132, -0.205);
     blade.rotation.x = 0.08;
@@ -1441,6 +1432,43 @@ export class Raidline {
     this.viewmodel.add(this.gunRoot, this.knifeRoot);
     this.camera.add(this.viewmodel);
     this.scene.add(this.camera);
+  }
+
+  loadRidge15(): void {
+    const url = `${import.meta.env.BASE_URL}models/ridge-15.glb`;
+    new GLTFLoader().load(
+      url,
+      (gltf) => this.mountRidge15(gltf.scene),
+      undefined,
+      () => {
+        /* file late or missing — keep playing without a box stand-in */
+      },
+    );
+  }
+
+  mountRidge15(root: THREE.Object3D): void {
+    const holdX = 0.122;
+    const holdY = -0.11;
+    const holdZ = -0.25;
+    // Old box gun: stock back z=-0.184 to barrel tip z=-0.326
+    const oldBoxLen = 0.142;
+    const measure = new THREE.Group();
+    measure.add(root);
+    measure.updateMatrixWorld(true);
+    const raw = new THREE.Box3().setFromObject(root);
+    const rawLen = raw.max.z - raw.min.z;
+    const scale = rawLen > 1e-6 ? oldBoxLen / rawLen : 0.18;
+    const localTip = new THREE.Vector3((raw.min.x + raw.max.x) * 0.5, (raw.min.y + raw.max.y) * 0.5, raw.min.z);
+    measure.remove(root);
+    root.name = "Ridge15";
+    root.position.set(holdX, holdY, holdZ);
+    root.scale.setScalar(scale);
+    this.gunRoot.add(root);
+    const tipX = holdX + localTip.x * scale;
+    const tipY = holdY + localTip.y * scale;
+    const tipZ = holdZ + localTip.z * scale;
+    if (this.muzzle) this.muzzle.position.set(tipX, tipY, tipZ);
+    if (this.muzzleSprite) this.muzzleSprite.position.set(tipX, tipY, tipZ - 0.005);
   }
 
   updateViewmodel(a: Actor): void {
